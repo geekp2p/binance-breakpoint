@@ -48,12 +48,20 @@ pairs:
         cooldown_minutes: 10       # เวลารอก่อนพิจารณาซ้ำ
         rebase_ladder_from_dip: true   # ปรับ P0/บันไดใหม่จากจุด dip
         rebase_offset: 0.0              # ตั้งบันไดจาก bottom*(1+offset)
+        order_quote: 0.0                # ตั้ง notional เฉพาะกิจ (0=ไม่ใช้)
+        order_pct_remaining: 0.5        # หรือสัดส่วน quote ที่เหลือ (0-1)
+        limit_offset: 0.001             # ตั้ง limit เหนือ bottom เล็กน้อย (0=ตรง bottom)
+        cancel_on_miss: true            # ถ้าราคาเด้งเกิน rebound_max ให้ยกเลิกสัญญาณ        
       sell_at_height:
         enabled: false
         height_threshold: 0.04     # สูงกว่า H ล่าสุดกี่ % ถึงนับว่า over-extended
         pullback_min: 0.004        # ย่อจากยอดขั้นต่ำเพื่อยืนยันการถอย
         pullback_max: 0.02         # ไม่ขายถ้าย่อแรงเกิน risk control (รอ tighten)
         cooldown_minutes: 10
+        order_pct_position: 0.5    # สัดส่วนของ Q ที่พร้อมตั้งขาย (0-1)
+        limit_offset: 0.001        # ตั้ง limit ต่ำกว่ายอดเล็กน้อย (0=ตรงยอด)
+        min_qty: 0.0               # ขั้นต่ำของจำนวนที่จะตั้งขาย (0=ไม่กำหนด)
+        cancel_on_miss: true       # ถ้าย่อลึกเกิน pullback_max → ยกเลิก        
 
     plotting: { enable: true }
 

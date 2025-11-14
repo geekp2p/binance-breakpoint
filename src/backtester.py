@@ -94,9 +94,35 @@ def run_backtest_for_pair(df: pd.DataFrame, cfg: PairConfig)->Dict[str, Any]:
     P0 = df.iloc[0]['open']
     prepare_ladder(state, P0)
     bar_count = 0
+    event_ptr = 0
     for _, row in df.iterrows():
         ts,o,h,l,c,v = row['timestamp'], row['open'],row['high'],row['low'],row['close'],row.get('volume',0.0)
         res = state.on_bar(ts,o,h,l,c,v, log_events)
+        new_events = log_events[event_ptr:]
+        for ev in new_events:
+            if ev.get("event") == "BTD_ORDER":
+                trades.append({
+                    "ts": ev["ts"],
+                    "side": "BUY",
+                    "tag": "BTD",
+                    "price": ev.get("order_price"),
+                    "qty": ev.get("order_qty"),
+                    "notional": ev.get("order_quote"),
+                    "pnl": None,
+                    "reason": "BUY_THE_DIP"
+                })
+            elif ev.get("event") == "SAH_ORDER":
+                trades.append({
+                    "ts": ev["ts"],
+                    "side": "SELL",
+                    "tag": "SAH",
+                    "price": ev.get("order_price"),
+                    "qty": ev.get("order_qty"),
+                    "notional": ev.get("order_quote"),
+                    "pnl": None,
+                    "reason": "SELL_AT_HEIGHT"
+                })
+        event_ptr = len(log_events)        
         if bar_count % state.snapshot_every_bars == 0:
             P_BE = state.P_BE(); F = state.floor_price(P_BE) if P_BE is not None else None
             equity_rows.append({"ts": ts, "price": c, "Q": state.Q, "C": state.C, "P_BE": P_BE,
@@ -106,16 +132,30 @@ def run_backtest_for_pair(df: pd.DataFrame, cfg: PairConfig)->Dict[str, Any]:
                                 "btd_armed": state.btd_armed, "sah_armed": state.sah_armed})
         bar_count += 1
         if res is not None:
-            trades.append({"ts": ts, "sell_price": res["sell_price"], "pnl": res["pnl"], "reason": res["reason"]})
+            qty = res.get("qty")
+            trades.append({
+                "ts": ts,
+                "side": "SELL",
+                "tag": res["reason"],
+                "price": res["sell_price"],
+                "qty": qty,
+                "notional": (res["sell_price"] * qty) if qty is not None else None,
+                "pnl": res["pnl"],
+                "reason": res["reason"]
+            })
             break
     evdf = pd.DataFrame(log_events)
     tdf = pd.DataFrame(trades)
     eqdf = pd.DataFrame(equity_rows)
+    realized = tdf[pd.notna(tdf.get("pnl"))] if not tdf.empty else tdf
+    last_realized = realized.iloc[-1] if realized is not None and len(realized) > 0 else None
     summary = {
         "symbol": cfg.symbol, "quote": cfg.quote, "b_alloc": cfg.b_alloc,
         "n_buys": int((evdf["event"]=="BUY").sum()) if not evdf.empty else 0,
-        "sell_reason": tdf.iloc[-1]["reason"] if len(tdf)>0 else None,
-        "pnl": float(tdf.iloc[-1]["pnl"]) if len(tdf)>0 else 0.0,
+        "btd_orders": int((evdf["event"]=="BTD_ORDER").sum()) if not evdf.empty else 0,
+        "sah_orders": int((evdf["event"]=="SAH_ORDER").sum()) if not evdf.empty else 0,
+        "sell_reason": last_realized["reason"] if last_realized is not None else None,
+        "pnl": float(last_realized["pnl"]) if last_realized is not None else 0.0,
         "duration_minutes": float(((eqdf["ts"].iloc[-1] - eqdf["ts"].iloc[0]).total_seconds()/60.0)) if len(eqdf)>1 else 0.0
     }
     return {"events": evdf, "trades": tdf, "equity": eqdf, "summary": summary}
