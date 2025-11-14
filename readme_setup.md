@@ -40,6 +40,7 @@
 5. สร้างอิมเมจและรันบริการ
    ```powershell
    docker compose build
+   docker compose build backtest demo
    # เริ่มกระบวนการ backtest ตาม config.yaml
    docker compose up backtest
    # (ทางเลือก) รันเดโมจำลองราคาออฟไลน์
@@ -110,6 +111,7 @@
 
 ## 7. Checklist หลังติดตั้ง
 - [ ] `docker compose build` สำเร็จ
+- [ ] `docker compose build backtest demo` สำเร็จ
 - [ ] `docker compose up backtest` สร้างไฟล์ใน `out/`
 - [ ] API key ถูกเซ็ตใน `.env` (หากรันโหมดที่ต้องการ)
 - [ ] ปรับแต่ง `config.yaml` ตามที่ต้องการ
