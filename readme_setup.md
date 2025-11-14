@@ -40,11 +40,13 @@
 5. สร้างอิมเมจและรันบริการ
    ```powershell
    docker compose build
-   docker compose build backtest demo
+   docker compose build backtest demo live
    # เริ่มกระบวนการ backtest ตาม config.yaml
    docker compose up backtest
    # (ทางเลือก) รันเดโมจำลองราคาออฟไลน์
    docker compose up demo
+   # Real trading (ต้องมี API KEY/SECRET ใน .env — ใช้ด้วยความระมัดระวัง)
+   docker compose up live
    ```
 6. ผลลัพธ์จะถูกสร้างในโฟลเดอร์ `out/` (เช่น CSV, JSON, plot)
 7. เมื่อใช้งานเสร็จให้หยุดด้วย `Ctrl+C` หรือใช้ `docker compose down`
@@ -111,7 +113,7 @@
 
 ## 7. Checklist หลังติดตั้ง
 - [ ] `docker compose build` สำเร็จ
-- [ ] `docker compose build backtest demo` สำเร็จ
+- [ ] `docker compose build backtest demo live` สำเร็จ
 - [ ] `docker compose up backtest` สร้างไฟล์ใน `out/`
 - [ ] API key ถูกเซ็ตใน `.env` (หากรันโหมดที่ต้องการ)
 - [ ] ปรับแต่ง `config.yaml` ตามที่ต้องการ

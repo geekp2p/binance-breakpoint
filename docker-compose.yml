@@ -26,3 +26,15 @@ services:
       - ./out:/app/out
     command: ["python","demo_offline.py","--out-dir","out/demo"]
     restart: "no"
+
+  live:
+    image: binance-breakpoint:latest
+    container_name: binance-breakpoint-live
+    env_file:
+      - .env
+    environment:
+      - TZ=Asia/Bangkok
+    volumes:
+      - ./config.yaml:/app/config.yaml:ro
+    command: ["python","live_trader.py","--config","config.yaml"]
+    restart: unless-stopped

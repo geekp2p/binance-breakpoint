@@ -5,7 +5,7 @@ api:
   secret: ${BINANCE_API_SECRET}
 
 pairs:
-  - symbol: BTCUSDT
+  - symbol: ZECUSDT
     quote: USDT
     b_alloc: 300.0
     source: binance
