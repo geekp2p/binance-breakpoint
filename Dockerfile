@@ -10,4 +10,4 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
-ENTRYPOINT ["python", "main.py", "--config", "config.yaml", "--out-dir", "out"]
+CMD ["python", "main.py", "--config", "config.yaml", "--out-dir", "out"]
