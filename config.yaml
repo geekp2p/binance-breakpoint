@@ -1,0 +1,67 @@
+
+api:
+  # ดึงจาก env เพื่อความปลอดภัย (ยังไม่ใช้กับ klines public)
+  key: ${BINANCE_API_KEY}
+  secret: ${BINANCE_API_SECRET}
+
+pairs:
+  - symbol: BTCUSDT
+    quote: USDT
+    b_alloc: 300.0
+    source: binance
+    interval: 1m
+    lookback_days: 2
+    fees: { taker: 0.001, maker: 0.001 }
+
+    buy_ladder: { d_buy: 0.07, m_buy: 1.5, n_steps: 7 }
+
+    profit_trail:
+      p_min: 0.02
+      s1: 0.01
+      m_step: 1.6
+      tau: 0.7
+      p_lock_base: 0.005
+      p_lock_max: 0.02
+      tau_min: 0.3
+      # ไม่ขายขาดทุน: ส่วนเผื่อขั้นต่ำให้เหนือ BE เสมอ
+      no_loss_epsilon: 0.0005
+
+    time_martingale:
+      W1_minutes: 5
+      m_time: 2.0
+      delta_lock: 0.002
+      beta_tau: 0.9
+
+    time_caps:
+      T_idle_max_minutes: 45
+      p_idle: 0.004
+      T_total_cap_minutes: 180
+      p_exit_min: 0.004
+
+    # --- Feature scaffolds (ปิดไว้) ---
+    features:
+      buy_the_dip:
+        enabled: false
+        dip_threshold: 0.05        # ต่ำกว่า "บันไดล่าสุด" อีกกี่ % ถึงนับว่า overshoot
+        rebound_min: 0.004         # เด้งจาก bottom ขั้นต่ำกี่ % ถึงยืนยัน rebound
+        rebound_max: 0.02          # เด้งไม่เกินกี่ % เพื่อ "ไม่ซื้อแพง"
+        cooldown_minutes: 10       # เวลารอก่อนพิจารณาซ้ำ
+        rebase_ladder_from_dip: true   # ปรับ P0/บันไดใหม่จากจุด dip
+        rebase_offset: 0.0              # ตั้งบันไดจาก bottom*(1+offset)
+      sell_at_height:
+        enabled: false
+        height_threshold: 0.04     # สูงกว่า H ล่าสุดกี่ % ถึงนับว่า over-extended
+        pullback_min: 0.004        # ย่อจากยอดขั้นต่ำเพื่อยืนยันการถอย
+        pullback_max: 0.02         # ไม่ขายถ้าย่อแรงเกิน risk control (รอ tighten)
+        cooldown_minutes: 10
+
+    plotting: { enable: true }
+
+general:
+  snapshot_every_bars: 1
+  use_maker: true
+  binance:
+    base_url: "https://api.binance.com"
+    retry: { attempts: 4, backoff_sec: 0.5 }
+    save_csv: true
+    data_dir: "data"

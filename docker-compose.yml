@@ -1,0 +1,27 @@
+
+services:
+  backtest:
+    build: .
+    image: binance-breakpoint:latest
+    container_name: binance-breakpoint
+    env_file:
+      - .env
+    environment:
+      - TZ=Asia/Bangkok
+    volumes:
+      - ./config.yaml:/app/config.yaml:ro
+      - ./out:/app/out
+      - ./data:/app/data
+    command: ["python","main.py","--config","config.yaml","--out-dir","out"]
+    restart: unless-stopped
+
+  demo:
+    build: .
+    image: binance-breakpoint:latest
+    container_name: binance-breakpoint-demo
+    environment:
+      - TZ=Asia/Bangkok
+    volumes:
+      - ./out:/app/out
+    command: ["python","demo_offline.py","--out-dir","out/demo"]
+    restart: "no"
