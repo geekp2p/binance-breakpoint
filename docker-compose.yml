@@ -16,8 +16,9 @@ services:
     restart: unless-stopped
 
   demo:
-    build: .
     image: binance-breakpoint:latest
+    depends_on:
+      - backtest
     container_name: binance-breakpoint-demo
     environment:
       - TZ=Asia/Bangkok

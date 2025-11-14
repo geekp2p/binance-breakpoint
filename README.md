@@ -9,6 +9,7 @@
 mkdir -p out data
 cp .env.example .env    # ใส่ API KEY/SECRET ของ Binance ที่นี่ (อย่า commit)
 docker compose build
+docker compose build backtest demo
 # Live (ดึงจาก Binance ตาม config.yaml)
 docker compose up backtest
 # Demo (ออฟไลน์ - จำลองราคาเพื่อดู flow)
