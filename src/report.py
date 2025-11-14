@@ -21,10 +21,26 @@ def save_outputs(symbol, out_dir, events:pd.DataFrame, trades:pd.DataFrame, equi
         equity.plot(x="ts", y="price", ax=ax, label="Price")
         evb = events[events["event"]=="BUY"] if not events.empty else pd.DataFrame()
         if not evb.empty:
-            ax.plot(evb["ts"], evb["price"], marker="^", linestyle="None", label="BUY")
+            evb.plot(
+                x="ts",
+                y="price",
+                ax=ax,
+                kind="scatter",
+                label="BUY",
+                marker="^",
+                color="tab:green",
+            )
         evs = events[events["event"]=="SELL"] if not events.empty else pd.DataFrame()
         if not evs.empty:
-            ax.plot(evs["ts"], evs["price"], marker="v", linestyle="None", label="SELL")
+            evs.plot(
+                x="ts",
+                y="price",
+                ax=ax,
+                kind="scatter",
+                label="SELL",
+                marker="v",
+                color="tab:red",
+            )
         ax.legend()
         fig.autofmt_xdate()
         fig.savefig(os.path.join(out_dir, f"{symbol}_plot.png"), dpi=120, bbox_inches="tight")
