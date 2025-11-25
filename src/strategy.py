@@ -2,6 +2,8 @@
 from dataclasses import dataclass, field
 from typing import List, Dict, Any, Optional
 import pandas as pd
+import math
+import sys
 
 from .utils import compute_ladder_prices
 
@@ -187,7 +189,15 @@ class StrategyState:
         self.next_window_minutes = self.tmart.W1_minutes
 
     def s_for_stage(self, stage:int)->float:
-        return self.trail.s1 * (self.trail.m_step ** (stage - 1))
+        if stage <= 1:
+            return self.trail.s1
+        if self.trail.m_step <= 1:
+            return self.trail.s1
+
+        base = max(self.trail.s1, sys.float_info.min)
+        max_power = math.log(sys.float_info.max / base, self.trail.m_step)
+        capped_power = min(stage - 1, max_power)
+        return self.trail.s1 * (self.trail.m_step ** capped_power)
 
     def floor_price(self, P_BE):
         if self.Q <= 0 or P_BE is None:
