@@ -75,12 +75,14 @@ class BuyTheDipConf:
     rebound_min: float = 0.004
     rebound_max: float = 0.02
     cooldown_minutes: float = 10.0
+    max_orders: int = 7
     rebase_ladder_from_dip: bool = True
     rebase_offset: float = 0.0
     order_quote: float = 0.0
     order_pct_remaining: float = 0.0
     limit_offset: float = 0.0
     cancel_on_miss: bool = True
+    isolate_from_ladder: bool = True
 
 @dataclass
 class SellAtHeightConf:
@@ -145,6 +147,7 @@ class StrategyState:
     btd_last_bottom: Optional[float] = None
     btd_last_arm_ts: Optional[pd.Timestamp] = None
     btd_cooldown_until: Optional[pd.Timestamp] = None
+    btd_orders_done: int = 0
 
     sah_armed: bool = False
     sah_last_top: Optional[float] = None
@@ -247,7 +250,12 @@ class StrategyState:
 
     def _disarm_sah(self):
         self.sah_armed = False
-        self.sah_last_top = None    
+        self.sah_last_top = None
+
+    def _reset_btd_progress(self):
+        self._disarm_btd()
+        self.btd_cooldown_until = None
+        self.btd_orders_done = 0 
 
     def reset_trail(self, now_ts, P_BE):
         self.TP_base = P_BE * (1 + self.trail.p_min)
@@ -454,28 +462,40 @@ class StrategyState:
             if rebound >= self.btd.rebound_min:
                 if rebound <= self.btd.rebound_max:
                     order_price = bottom * (1 + self.btd.limit_offset)
-                    quote_amt = self._compute_btd_quote_amount()
-                    qty = (quote_amt / order_price) if order_price > 0 else 0.0
-                    if qty > 0:
-                        log_events.append({
-                            "ts": ts,
-                            "event": "BTD_ORDER",
-                            "bottom": bottom,
-                            "rebound": rebound,
-                            "order_price": order_price,
-                            "order_quote": quote_amt,
-                            "order_qty": qty
-                        })
-                    else:
+                    if self.btd_orders_done >= max(1, int(self.btd.max_orders)):
                         log_events.append({
                             "ts": ts,
                             "event": "BTD_ORDER_SKIPPED",
-                            "reason": "NO_CAPITAL",
+                            "reason": "BTD_MAX_REACHED",
                             "bottom": bottom,
                             "rebound": rebound
                         })
+                    else:
+                        quote_amt = self._compute_btd_quote_amount()
+                        qty = (quote_amt / order_price) if order_price > 0 else 0.0
+                        if qty > 0:
+                            self.btd_orders_done += 1
+                            log_events.append({
+                                "ts": ts,
+                                "event": "BTD_ORDER",
+                                "bottom": bottom,
+                                "rebound": rebound,
+                                "order_price": order_price,
+                                "order_quote": quote_amt,
+                                "order_qty": qty,
+                                "btd_order_idx": self.btd_orders_done,
+                                "btd_max_orders": self.btd.max_orders
+                            })
+                        else:
+                            log_events.append({
+                                "ts": ts,
+                                "event": "BTD_ORDER_SKIPPED",
+                                "reason": "NO_CAPITAL",
+                                "bottom": bottom,
+                                "rebound": rebound
+                            })
                     self.btd_cooldown_until = ts + pd.Timedelta(minutes=self.btd.cooldown_minutes)
-                    if self.btd.rebase_ladder_from_dip:
+                    if self.btd.rebase_ladder_from_dip and not self.btd.isolate_from_ladder:
                         new_base = bottom * (1 + self.btd.rebase_offset)
                         self._rebase_ladder(new_base, ts, log_events)
                     self._disarm_btd()
@@ -585,6 +605,7 @@ class StrategyState:
                 self.round_active = False
                 self.Q = 0.0
                 self.C = 0.0
+                self._reset_btd_progress()
                 return {"sell_price": F, "pnl": pnl, "reason":"TRAIL_PULLBACK", "qty": qty}
 
         # --- idle/total caps ---
@@ -600,6 +621,7 @@ class StrategyState:
                     self.round_active = False
                     self.Q = 0.0
                     self.C = 0.0
+                    self._reset_btd_progress()
                     return {"sell_price": target, "pnl": pnl, "reason":"IDLE_EXIT", "qty": qty}
                 self.idle_checked = True
 
@@ -614,5 +636,6 @@ class StrategyState:
                 self.round_active = False
                 self.Q = 0.0
                 self.C = 0.0
+                self._reset_btd_progress()
                 return {"sell_price": target, "pnl": pnl, "reason":"TOTAL_CAP", "qty": qty}
         return None
