@@ -5,7 +5,7 @@ import pandas as pd
 import math
 import sys
 
-from .utils import compute_ladder_prices
+from .utils import compute_ladder_prices, geometric_base_allocation
 
 PHASE_ACCUMULATE = "ACCUMULATE"
 PHASE_TRAIL = "TRAIL"
@@ -15,6 +15,17 @@ class BuyLadderConf:
     d_buy: float
     m_buy: float
     n_steps: int
+
+@dataclass
+class AdaptiveLadderConf:
+    enabled: bool = False
+    bootstrap_d_buy: float = 0.03
+    bootstrap_steps: int = 3
+    min_d_buy: float = 0.02
+    max_d_buy: float = 0.08
+    volatility_window: int = 120
+    sensitivity: float = 0.6
+    rebalance_threshold: float = 0.001    
 
 @dataclass
 class ProfitTrailConf:
@@ -89,6 +100,7 @@ class StrategyState:
     fees_sell: float
     b_alloc: float
     buy: BuyLadderConf
+    adaptive: AdaptiveLadderConf
     trail: ProfitTrailConf
     tmart: TimeMartingaleConf
     tcaps: TimeCapsConf
@@ -105,6 +117,9 @@ class StrategyState:
     ladder_prices: List[float] = field(default_factory=list)
     ladder_amounts_quote: List[float] = field(default_factory=list)
     ladder_next_idx: int = 0
+    current_d_buy: float = 0.0
+    adaptive_ready: bool = False
+    volatility_samples: List[float] = field(default_factory=list)
     Q: float = 0.0
     C: float = 0.0
     TP_base: Optional[float] = None
@@ -140,6 +155,62 @@ class StrategyState:
         spent = sum(self.ladder_amounts_quote[:self.ladder_next_idx]) + self._scalp_committed_quote()
         remaining = max(self.b_alloc - spent, 0.0)
         return remaining
+    
+    def _effective_n_steps(self) -> int:
+        if self.adaptive.enabled and not self.adaptive_ready:
+            return max(1, int(self.adaptive.bootstrap_steps))
+        return max(1, int(self.buy.n_steps))
+
+    def _set_initial_d_buy(self):
+        if self.adaptive.enabled:
+            self.current_d_buy = self.adaptive.bootstrap_d_buy
+        else:
+            self.current_d_buy = self.buy.d_buy
+
+    def rebuild_ladder(self, base_price: float, ts=None, log_events: Optional[List[Dict[str, Any]]] = None,
+                       reason: str = "RESET", preserve_progress: bool = False):
+        steps = self._effective_n_steps()
+        a = geometric_base_allocation(self.b_alloc, self.buy.m_buy, steps)
+        amounts = [a * (self.buy.m_buy ** i) for i in range(steps)]
+        prev_idx = self.ladder_next_idx if preserve_progress else 0
+        self.ladder_amounts_quote = amounts
+        self.ladder_prices = compute_ladder_prices(base_price, self.current_d_buy, steps)
+        self.ladder_next_idx = min(prev_idx, steps)
+        if log_events is not None and ts is not None:
+            log_events.append({
+                "ts": ts,
+                "event": "LADDER_REBUILT",
+                "reason": reason,
+                "steps": steps,
+                "d_buy": self.current_d_buy,
+            })
+
+    def _push_volatility_sample(self, h: float, l: float, c: float):
+        if not self.adaptive.enabled or c <= 0:
+            return
+        window = max(1, int(self.adaptive.volatility_window))
+        sample = max((h - l) / c, 0.0)
+        self.volatility_samples.append(sample)
+        if len(self.volatility_samples) > window:
+            self.volatility_samples = self.volatility_samples[-window:]
+
+    def _maybe_update_adaptive_spacing(self, ts, c, h, l, log_events: List[Dict[str, Any]]):
+        if not self.adaptive.enabled:
+            return
+        self._push_volatility_sample(h, l, c)
+        window = max(1, int(self.adaptive.volatility_window))
+        if len(self.volatility_samples) < max(10, window // 2):
+            return
+        mean_range = sum(self.volatility_samples[-window:]) / min(len(self.volatility_samples), window)
+        target = mean_range * self.adaptive.sensitivity
+        target = min(max(target, self.adaptive.min_d_buy), self.adaptive.max_d_buy)
+        if not self.adaptive_ready:
+            self.adaptive_ready = True
+        if abs(target - self.current_d_buy) < self.adaptive.rebalance_threshold:
+            return
+        self.current_d_buy = target
+        base = c if c > 0 else self.P0 or c
+        self.rebuild_ladder(base, ts, log_events, reason="ADAPTIVE_UPDATE", preserve_progress=True)
 
     def _compute_btd_quote_amount(self) -> float:
         if self.btd.order_quote > 0:
@@ -345,8 +416,7 @@ class StrategyState:
     def _rebase_ladder(self, new_base_price: float, ts, log_events: List[Dict[str, Any]]):
         if new_base_price <= 0:
             return
-        self.ladder_prices = compute_ladder_prices(new_base_price, self.buy.d_buy, self.buy.n_steps)
-        self.ladder_next_idx = 0
+        self.rebuild_ladder(new_base_price, ts, log_events, reason="BTD_REBASE", preserve_progress=False)
         log_events.append({
             "ts": ts,
             "event": "BTD_LADDER_RESET",
@@ -367,21 +437,8 @@ class StrategyState:
 
         # --- early scalp buys ---
         self._maybe_scalp_buy(ts, o, h, l, log_events)
-        # --- main ladder buys ---
-
-        # --- ladder buys ---
-        while self.ladder_next_idx < len(self.ladder_prices):
-            trig = self.ladder_prices[self.ladder_next_idx]
-            if l <= trig:
-                amt_q = self.ladder_amounts_quote[self.ladder_next_idx]
-                if amt_q > 0:
-                    q = (amt_q / trig)
-                    self.Q += q
-                    self.C += amt_q * (1 + self.fees_buy)
-                    log_events.append({"ts": ts, "event":"BUY", "price": trig, "q": q, "amt_q": amt_q, "ladder_idx": self.ladder_next_idx+1})
-                self.ladder_next_idx += 1
-                continue
-            break
+        # --- adapt ladder spacing before consuming quote ---
+        self._maybe_update_adaptive_spacing(ts, c, h, l, log_events)
 
         # --- Arm BTD/SAH (scaffold only; no auto-action) ---
         ev = self._maybe_arm_btd(ts, l)
@@ -390,7 +447,7 @@ class StrategyState:
             ev2 = self._maybe_arm_sah(ts, h)
             if ev2: log_events.append(ev2)
 
-        # --- BTD confirmation ---
+        # --- BTD confirmation (priority before ladder) ---
         if self.btd_armed and self.btd_last_bottom is not None:
             bottom = self.btd_last_bottom
             rebound = (h - bottom) / bottom if bottom > 0 else 0.0
@@ -432,7 +489,7 @@ class StrategyState:
                     })
                     self._disarm_btd()
 
-        # --- SAH confirmation ---
+        # --- SAH confirmation (priority before ladder) ---
         if self.sah_armed and self.sah_last_top is not None and self.Q > 0:
             top = self.sah_last_top
             pullback = (top - l) / top if top > 0 else 0.0
@@ -469,6 +526,20 @@ class StrategyState:
                         "pullback": pullback
                     })
                     self._disarm_sah()
+
+        # --- ladder buys (after opportunistic actions) ---
+        while self.ladder_next_idx < len(self.ladder_prices):
+            trig = self.ladder_prices[self.ladder_next_idx]
+            if l <= trig:
+                amt_q = self.ladder_amounts_quote[self.ladder_next_idx]
+                if amt_q > 0:
+                    q = (amt_q / trig)
+                    self.Q += q
+                    self.C += amt_q * (1 + self.fees_buy)
+                    log_events.append({"ts": ts, "event":"BUY", "price": trig, "q": q, "amt_q": amt_q, "ladder_idx": self.ladder_next_idx+1})
+                self.ladder_next_idx += 1
+                continue
+            break
 
         P_BE = self.P_BE()
         if P_BE is None or self.Q <= 0:

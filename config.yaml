@@ -13,7 +13,7 @@ pairs:
     lookback_days: 2
     fees: { taker: 0.001, maker: 0.001 }
 
-    buy_ladder: { d_buy: 0.07, m_buy: 1.5, n_steps: 7 }
+    buy_ladder: { d_buy: 0.03, m_buy: 1.5, n_steps: 3 }
 
     profit_trail:
       p_min: 0.02
@@ -73,8 +73,16 @@ pairs:
         order_pct_position: 0.5    # สัดส่วนของ Q ที่พร้อมตั้งขาย (0-1)
         limit_offset: 0.001        # ตั้ง limit ต่ำกว่ายอดเล็กน้อย (0=ตรงยอด)
         min_qty: 0.0               # ขั้นต่ำของจำนวนที่จะตั้งขาย (0=ไม่กำหนด)
-        cancel_on_miss: true       # ถ้าย่อลึกเกิน pullback_max → ยกเลิก        
-
+        cancel_on_miss: true       # ถ้าย่อลึกเกิน pullback_max → ยกเลิก
+      adaptive_ladder:
+        enabled: true
+        bootstrap_d_buy: 0.03       # เริ่มต้นใช้ระยะห่าง 3%
+        bootstrap_steps: 3          # จำกัดลึกสุด 3 ไม้ในช่วงสังเกตการณ์
+        min_d_buy: 0.02             # ระยะห่างต่ำสุดเมื่อความถี่สูงมาก
+        max_d_buy: 0.08             # ระยะห่างสูงสุดเมื่อสวิงแรง
+        volatility_window: 120      # ใช้ค่า range ล่าสุด 120 แท่ง (2 ชม. ที่ TF 1m)
+        sensitivity: 0.6            # factor แปลงความผันผวนเป็น d_buy
+        rebalance_threshold: 0.001  # ขยับ ladder เมื่อ d_buy เปลี่ยนเกิน 0.1%
     plotting: { enable: true }
 
 general:

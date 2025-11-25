@@ -82,6 +82,9 @@ def state_to_payload(state: StrategyState) -> Dict[str, Any]:
         "ladder_prices": list(state.ladder_prices),
         "ladder_amounts_quote": list(state.ladder_amounts_quote),
         "ladder_next_idx": state.ladder_next_idx,
+        "current_d_buy": state.current_d_buy,
+        "adaptive_ready": state.adaptive_ready,
+        "volatility_samples": list(state.volatility_samples),
         "Q": state.Q,
         "C": state.C,
         "TP_base": state.TP_base,
@@ -117,6 +120,9 @@ def apply_payload_to_state(state: StrategyState, payload: Dict[str, Any]) -> Non
     state.ladder_prices = list(payload.get("ladder_prices", state.ladder_prices))
     state.ladder_amounts_quote = list(payload.get("ladder_amounts_quote", state.ladder_amounts_quote))
     state.ladder_next_idx = int(payload.get("ladder_next_idx", state.ladder_next_idx))
+    state.current_d_buy = float(payload.get("current_d_buy", state.current_d_buy))
+    state.adaptive_ready = bool(payload.get("adaptive_ready", state.adaptive_ready))
+    state.volatility_samples = list(payload.get("volatility_samples", state.volatility_samples))
     state.Q = float(payload.get("Q", state.Q))
     state.C = float(payload.get("C", state.C))
     state.TP_base = payload.get("TP_base", state.TP_base)

@@ -4,8 +4,17 @@ import pandas as pd
 from dataclasses import dataclass
 from typing import Dict, Any
 from .utils import geometric_base_allocation, compute_ladder_prices
-from .strategy import (StrategyState, BuyLadderConf, ProfitTrailConf, TimeMartingaleConf,
-                       TimeCapsConf, ScalpModeConf, BuyTheDipConf, SellAtHeightConf)
+from .strategy import (
+    StrategyState,
+    BuyLadderConf,
+    AdaptiveLadderConf,
+    ProfitTrailConf,
+    TimeMartingaleConf,
+    TimeCapsConf,
+    ScalpModeConf,
+    BuyTheDipConf,
+    SellAtHeightConf,
+)
 from .fetchers.binance import fetch_klines_binance
 
 @dataclass
@@ -44,6 +53,7 @@ class PairConfig:
     btd: Dict[str, Any]
     sah: Dict[str, Any]
     scalp: Dict[str, Any]
+    adaptive_ladder: Dict[str, Any]
 
 def init_state_from_config(cfg: PairConfig):
     fees = cfg.fees_maker if cfg.use_maker else cfg.fees_taker
@@ -59,15 +69,15 @@ def init_state_from_config(cfg: PairConfig):
                            T_total_cap_minutes=cfg.T_total_cap_minutes, p_exit_min=cfg.p_exit_min),
                            scalp=ScalpModeConf(**cfg.scalp),
         btd=BuyTheDipConf(**cfg.btd), sah=SellAtHeightConf(**cfg.sah),
+        adaptive=AdaptiveLadderConf(**cfg.adaptive_ladder),
         snapshot_every_bars=cfg.snapshot_every_bars, use_maker=cfg.use_maker
     )
 
 def prepare_ladder(state: StrategyState, P0: float):
-    a = geometric_base_allocation(state.b_alloc, state.buy.m_buy, state.buy.n_steps)
-    amounts = [a * (state.buy.m_buy ** i) for i in range(state.buy.n_steps)]
-    state.ladder_amounts_quote = amounts
-    state.ladder_prices = compute_ladder_prices(P0, state.buy.d_buy, state.buy.n_steps)
-    state.ladder_next_idx = 0
+    state._set_initial_d_buy()
+    state.adaptive_ready = False
+    state.volatility_samples = []
+    state.rebuild_ladder(P0)
 
 def load_data_for_pair(pc: PairConfig, general: dict, api: dict)->pd.DataFrame:
     if pc.source.lower() == "binance":

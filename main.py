@@ -40,7 +40,8 @@ def run(cfg_path, out_dir):
             snapshot_every_bars=snapshot_every, use_maker=use_maker,
             btd=pc.get("features",{}).get("buy_the_dip", {"enabled": False}),
             sah=pc.get("features",{}).get("sell_at_height", {"enabled": False}),
-            scalp=pc.get("features",{}).get("scalp_mode", {"enabled": False})
+            scalp=pc.get("features",{}).get("scalp_mode", {"enabled": False}),
+            adaptive_ladder=pc.get("features",{}).get("adaptive_ladder", {"enabled": False}),
         )
         df = load_data_for_pair(paircfg, general, api)
         res = run_backtest_for_pair(df, paircfg)
