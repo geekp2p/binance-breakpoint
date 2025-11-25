@@ -65,7 +65,7 @@ def main(
         T_idle_max_minutes=45, p_idle=0.004,
         T_total_cap_minutes=180, p_exit_min=0.004,
         snapshot_every_bars=1, use_maker=True,
-        btd={"enabled": False}, sah={"enabled": False}
+        scalp={"enabled": False}, btd={"enabled": False}, sah={"enabled": False}
     )
     res = run_backtest_for_pair(df, cfg)
     events, trades, equity, summary = res["events"], res["trades"], res["equity"], res["summary"]

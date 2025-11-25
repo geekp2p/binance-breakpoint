@@ -58,6 +58,7 @@ def build_pair_config(raw: Dict, general: Dict) -> PairConfig:
         p_exit_min=float(raw["time_caps"]["p_exit_min"]),
         snapshot_every_bars=int(general.get("snapshot_every_bars", 1)),
         use_maker=bool(general.get("use_maker", True)),
+        scalp=raw.get("features", {}).get("scalp_mode", {"enabled": False}),
         btd=raw.get("features", {}).get("buy_the_dip", {"enabled": False}),
         sah=raw.get("features", {}).get("sell_at_height", {"enabled": False}),
     )
