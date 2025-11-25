@@ -20,7 +20,8 @@ docker compose up demo
 
 ## Config
 - `config.yaml` — ตั้งค่าคู่/ช่วง/ฟีส์/พารามิเตอร์หลัก และ **features.BTD/SAH** (disabled)
-  - เพิ่ม `features.scalp_mode` เพื่อ "เข้าเร็ว-ออกเร็ว" 1-3 ไม้แรก: กำหนด % ย่อที่ให้ซื้อ, % เด้งที่ขายทำกำไร และให้สเกลตามช่วงแกว่งของวัน (วัดจาก high-low ของรอบ)
+  - เพิ่ม `features.scalp_mode` เพื่อ "เข้าเร็ว-ออกเร็ว" 1-3 ไม้แรก: กำหนด % ย่อที่ให้ซื้อ, % เด้งที่ขายทำกำไร และให้สเกลตามช่วงแกว่งของวัน (วัดจาก high-low ของรอบ) โดยจะหยุดหลังครบ `max_trades` และไม่ไปกินทุนบันไดหลัก (`b_alloc`) เกินโควตา `order_pct_allocation`
+  - โครง `features.buy_the_dip` / `features.sell_at_height` ยังเป็นการ "ตั้งธง" เฉย ๆ (log event) ไม่ได้ยิงออเดอร์จริง เพื่อให้เห็นว่าเงื่อนไขถึงจุดหรือยังก่อนปรับค่าใช้งาน
 - `.env` — ใส่ `BINANCE_API_KEY/BINANCE_API_SECRET` (ไม่ใช้กับ klines public; เตรียมไว้สำหรับงานถัดไป)
 
 ### Live Trader
