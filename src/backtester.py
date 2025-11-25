@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from typing import Dict, Any
 from .utils import geometric_base_allocation, compute_ladder_prices
 from .strategy import (StrategyState, BuyLadderConf, ProfitTrailConf, TimeMartingaleConf,
-                       TimeCapsConf, BuyTheDipConf, SellAtHeightConf)
+                       TimeCapsConf, ScalpModeConf, BuyTheDipConf, SellAtHeightConf)
 from .fetchers.binance import fetch_klines_binance
 
 @dataclass
@@ -43,6 +43,7 @@ class PairConfig:
     use_maker: bool
     btd: Dict[str, Any]
     sah: Dict[str, Any]
+    scalp: Dict[str, Any]
 
 def init_state_from_config(cfg: PairConfig):
     fees = cfg.fees_maker if cfg.use_maker else cfg.fees_taker
@@ -56,6 +57,7 @@ def init_state_from_config(cfg: PairConfig):
                                  delta_lock=cfg.delta_lock, beta_tau=cfg.beta_tau),
         tcaps=TimeCapsConf(T_idle_max_minutes=cfg.T_idle_max_minutes, p_idle=cfg.p_idle,
                            T_total_cap_minutes=cfg.T_total_cap_minutes, p_exit_min=cfg.p_exit_min),
+                           scalp=ScalpModeConf(**cfg.scalp),
         btd=BuyTheDipConf(**cfg.btd), sah=SellAtHeightConf(**cfg.sah),
         snapshot_every_bars=cfg.snapshot_every_bars, use_maker=cfg.use_maker
     )
@@ -111,6 +113,28 @@ def run_backtest_for_pair(df: pd.DataFrame, cfg: PairConfig)->Dict[str, Any]:
                     "pnl": None,
                     "reason": "BUY_THE_DIP"
                 })
+            elif ev.get("event") == "SCALP_BUY":
+                trades.append({
+                    "ts": ev["ts"],
+                    "side": "BUY",
+                    "tag": "SCALP",
+                    "price": ev.get("price"),
+                    "qty": ev.get("qty"),
+                    "notional": ev.get("order_quote"),
+                    "pnl": None,
+                    "reason": "SCALP_BUY"
+                })
+            elif ev.get("event") == "SCALP_TP":
+                trades.append({
+                    "ts": ev["ts"],
+                    "side": "SELL",
+                    "tag": "SCALP_TP",
+                    "price": ev.get("price"),
+                    "qty": ev.get("qty"),
+                    "notional": ev.get("proceeds"),
+                    "pnl": ev.get("pnl"),
+                    "reason": "SCALP_TAKE_PROFIT"
+                })    
             elif ev.get("event") == "SAH_ORDER":
                 trades.append({
                     "ts": ev["ts"],
@@ -153,6 +177,8 @@ def run_backtest_for_pair(df: pd.DataFrame, cfg: PairConfig)->Dict[str, Any]:
         "symbol": cfg.symbol, "quote": cfg.quote, "b_alloc": cfg.b_alloc,
         "n_buys": int((evdf["event"]=="BUY").sum()) if not evdf.empty else 0,
         "btd_orders": int((evdf["event"]=="BTD_ORDER").sum()) if not evdf.empty else 0,
+        "scalp_buys": int((evdf["event"]=="SCALP_BUY").sum()) if not evdf.empty else 0,
+        "scalp_tps": int((evdf["event"]=="SCALP_TP").sum()) if not evdf.empty else 0,
         "sah_orders": int((evdf["event"]=="SAH_ORDER").sum()) if not evdf.empty else 0,
         "sell_reason": last_realized["reason"] if last_realized is not None else None,
         "pnl": float(last_realized["pnl"]) if last_realized is not None else 0.0,

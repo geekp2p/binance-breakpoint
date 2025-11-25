@@ -39,7 +39,8 @@ def run(cfg_path, out_dir):
             T_total_cap_minutes=float(pc["time_caps"]["T_total_cap_minutes"]), p_exit_min=float(pc["time_caps"]["p_exit_min"]),
             snapshot_every_bars=snapshot_every, use_maker=use_maker,
             btd=pc.get("features",{}).get("buy_the_dip", {"enabled": False}),
-            sah=pc.get("features",{}).get("sell_at_height", {"enabled": False})
+            sah=pc.get("features",{}).get("sell_at_height", {"enabled": False}),
+            scalp=pc.get("features",{}).get("scalp_mode", {"enabled": False})
         )
         df = load_data_for_pair(paircfg, general, api)
         res = run_backtest_for_pair(df, paircfg)

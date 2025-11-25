@@ -94,6 +94,11 @@ def state_to_payload(state: StrategyState) -> Dict[str, Any]:
         "last_high_ts": _to_iso(state.last_high_ts),
         "next_window_minutes": state.next_window_minutes,
         "idle_checked": state.idle_checked,
+        "scalp_anchor_price": state.scalp_anchor_price,
+        "scalp_trades_done": state.scalp_trades_done,
+        "scalp_positions": list(state.scalp_positions),
+        "session_high": state.session_high,
+        "session_low": state.session_low,
         "btd_armed": state.btd_armed,
         "btd_last_bottom": state.btd_last_bottom,
         "btd_last_arm_ts": _to_iso(state.btd_last_arm_ts),
@@ -125,6 +130,11 @@ def apply_payload_to_state(state: StrategyState, payload: Dict[str, Any]) -> Non
     nwm = payload.get("next_window_minutes", state.next_window_minutes)
     state.next_window_minutes = float(nwm) if nwm is not None else None
     state.idle_checked = bool(payload.get("idle_checked", state.idle_checked))
+    state.scalp_anchor_price = payload.get("scalp_anchor_price", state.scalp_anchor_price)
+    state.scalp_trades_done = int(payload.get("scalp_trades_done", state.scalp_trades_done))
+    state.scalp_positions = list(payload.get("scalp_positions", state.scalp_positions))
+    state.session_high = payload.get("session_high", state.session_high)
+    state.session_low = payload.get("session_low", state.session_low)
     state.btd_armed = bool(payload.get("btd_armed", state.btd_armed))
     state.btd_last_bottom = payload.get("btd_last_bottom", state.btd_last_bottom)
     state.btd_last_arm_ts = _from_iso(payload.get("btd_last_arm_ts")) or state.btd_last_arm_ts

@@ -38,6 +38,21 @@ class TimeCapsConf:
     p_idle: float
     T_total_cap_minutes: float
     p_exit_min: float
+    
+# --- Early scalp mode ---
+@dataclass
+class ScalpModeConf:
+    enabled: bool = False
+    max_trades: int = 3
+    base_drop_pct: float = 0.03
+    min_drop_pct: float = 0.015
+    max_drop_pct: float = 0.08
+    base_take_profit_pct: float = 0.01
+    min_take_profit_pct: float = 0.006
+    max_take_profit_pct: float = 0.03
+    volatility_ref_pct: float = 0.04
+    scale_strength: float = 0.5
+    order_pct_allocation: float = 0.33
 
 # --- Scaffolds ---
 @dataclass
@@ -75,6 +90,7 @@ class StrategyState:
     trail: ProfitTrailConf
     tmart: TimeMartingaleConf
     tcaps: TimeCapsConf
+    scalp: ScalpModeConf
     btd: BuyTheDipConf
     sah: SellAtHeightConf
     snapshot_every_bars: int
@@ -100,6 +116,13 @@ class StrategyState:
     next_window_minutes: Optional[float] = None
     idle_checked: bool = False
 
+    # Early scalp mode state
+    scalp_anchor_price: Optional[float] = None
+    scalp_trades_done: int = 0
+    scalp_positions: List[Dict[str, float]] = field(default_factory=list)
+    session_high: Optional[float] = None
+    session_low: Optional[float] = None
+
     # Scaffolding flags (no auto-trading yet)
     btd_armed: bool = False
     btd_last_bottom: Optional[float] = None
@@ -112,7 +135,7 @@ class StrategyState:
     sah_cooldown_until: Optional[pd.Timestamp] = None
 
     def _remaining_quote_allocation(self) -> float:
-        spent = sum(self.ladder_amounts_quote[:self.ladder_next_idx])
+        spent = sum(self.ladder_amounts_quote[:self.ladder_next_idx]) + self._scalp_committed_quote()
         remaining = max(self.b_alloc - spent, 0.0)
         return remaining
 
@@ -131,6 +154,19 @@ class StrategyState:
         if self.sah.min_qty > 0 and qty < self.sah.min_qty:
             return 0.0
         return min(qty, self.Q)
+    
+    def _scalp_committed_quote(self) -> float:
+        total = 0.0
+        for pos in self.scalp_positions:
+            total += pos.get("cost", 0.0) / (1 + self.fees_buy)
+        return total
+
+    def _remaining_scalp_allocation(self) -> float:
+        target_alloc = self.b_alloc * max(min(self.scalp.order_pct_allocation, 1.0), 0.0)
+        spent_ladder = sum(self.ladder_amounts_quote[:self.ladder_next_idx])
+        spent_scalp = self._scalp_committed_quote()
+        remaining_quote = max(self.b_alloc - spent_ladder - spent_scalp, 0.0)
+        return min(target_alloc, remaining_quote)
 
     def _disarm_btd(self):
         self.btd_armed = False
@@ -168,6 +204,106 @@ class StrategyState:
         if self.Q <= 0:
             return None
         return self.C / (self.Q * (1 - self.fees_sell))
+
+    # --- Scalp helpers ---
+    def _update_session_range(self, h: float, l: float):
+        if self.session_high is None or h > self.session_high:
+            self.session_high = h
+        if self.session_low is None or l < self.session_low:
+            self.session_low = l
+
+    def _volatility_scale(self) -> float:
+        if not self.scalp.enabled:
+            return 1.0
+        if self.session_high is None or self.session_low is None or self.session_high <= 0:
+            return 1.0
+        observed = (self.session_high - self.session_low) / self.session_high
+        if self.scalp.volatility_ref_pct <= 0:
+            return 1.0
+        ratio = observed / self.scalp.volatility_ref_pct
+        scale = 1.0 + (ratio - 1.0) * self.scalp.scale_strength
+        return max(0.5, min(scale, 2.0))
+
+    def _scalp_thresholds(self) -> Dict[str, float]:
+        scale = self._volatility_scale()
+        drop = self.scalp.base_drop_pct * scale
+        tp = self.scalp.base_take_profit_pct * scale
+        drop = min(max(drop, self.scalp.min_drop_pct), self.scalp.max_drop_pct)
+        tp = min(max(tp, self.scalp.min_take_profit_pct), self.scalp.max_take_profit_pct)
+        return {"drop_pct": drop, "take_profit_pct": tp}
+
+    def _maybe_scalp_buy(self, ts, o, h, l, log_events: List[Dict[str, Any]]):
+        if not self.scalp.enabled:
+            return
+        if self.scalp_trades_done >= self.scalp.max_trades:
+            return
+        anchor = self.scalp_anchor_price or self.P0
+        if anchor is None or anchor <= 0:
+            return
+        thresholds = self._scalp_thresholds()
+        trigger = anchor * (1 - thresholds["drop_pct"])
+        if l > trigger:
+            return
+        order_quote = self._remaining_scalp_allocation()
+        if order_quote <= 0:
+            log_events.append({
+                "ts": ts,
+                "event": "SCALP_BUY_SKIPPED",
+                "reason": "NO_CAPITAL",
+                "trigger": trigger,
+                "drop_pct": thresholds["drop_pct"],
+            })
+            self.scalp_trades_done += 1
+            return
+        price = trigger
+        qty = order_quote / price
+        cost = order_quote * (1 + self.fees_buy)
+        self.Q += qty
+        self.C += cost
+        target = price * (1 + thresholds["take_profit_pct"])
+        self.scalp_positions.append({
+            "entry": price,
+            "qty": qty,
+            "cost": cost,
+            "target": target,
+        })
+        self.scalp_trades_done += 1
+        log_events.append({
+            "ts": ts,
+            "event": "SCALP_BUY",
+            "price": price,
+            "qty": qty,
+            "order_quote": order_quote,
+            "drop_pct": thresholds["drop_pct"],
+            "take_profit_pct": thresholds["take_profit_pct"],
+            "target": target,
+            "trade_idx": self.scalp_trades_done,
+        })
+
+    def _check_scalp_take_profit(self, ts, h, log_events: List[Dict[str, Any]]):
+        if not self.scalp_positions:
+            return
+        remaining_positions: List[Dict[str, float]] = []
+        for pos in self.scalp_positions:
+            target = pos["target"]
+            if h >= target:
+                qty = pos["qty"]
+                proceeds = qty * target * (1 - self.fees_sell)
+                pnl = proceeds - pos["cost"]
+                self.Q = max(self.Q - qty, 0.0)
+                self.C = max(self.C - pos["cost"], 0.0)
+                log_events.append({
+                    "ts": ts,
+                    "event": "SCALP_TP",
+                    "price": target,
+                    "qty": qty,
+                    "proceeds": proceeds,
+                    "pnl": pnl,
+                })
+            else:
+                remaining_positions.append(pos)
+        self.scalp_positions = remaining_positions
+    # --- End scalp helpers ---
 
     # --- Scaffolding: detect/arm BTD/SAH, but do NOT auto-execute ---
     def _maybe_arm_btd(self, ts, low):
@@ -212,6 +348,16 @@ class StrategyState:
         if self.P0 is None:
             self.P0 = o
             self.round_start_ts = ts
+            self.scalp_anchor_price = o
+
+        self._update_session_range(h, l)
+
+        # --- scalp take-profit first (protect fast exits) ---
+        self._check_scalp_take_profit(ts, h, log_events)
+
+        # --- early scalp buys ---
+        self._maybe_scalp_buy(ts, o, h, l, log_events)
+        # --- main ladder buys ---
 
         # --- ladder buys ---
         while self.ladder_next_idx < len(self.ladder_prices):

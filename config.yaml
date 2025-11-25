@@ -40,6 +40,18 @@ pairs:
 
     # --- Feature scaffolds (ปิดไว้) ---
     features:
+      scalp_mode:
+        enabled: true
+        max_trades: 3            # จำกัดไม้สั้น ๆ 3 ไม้แรกตามที่ต้องการ
+        base_drop_pct: 0.03      # ค่าเริ่มต้น เมื่อสวิงไม่มาก
+        min_drop_pct: 0.02       # ปรับลดลงได้ถ้าวันนั้นนิ่งมาก
+        max_drop_pct: 0.06       # ถ้าแกว่งแรงจะ scale ขึ้นจนถึงค่านี้
+        base_take_profit_pct: 0.01
+        min_take_profit_pct: 0.008
+        max_take_profit_pct: 0.02
+        volatility_ref_pct: 0.04 # ใช้ high-low ระหว่างรอบเปรียบเทียบเพื่อ scale % ให้สูง/ต่ำ
+        scale_strength: 0.6      # ยอมเพิ่ม/ลดตาม range ที่วัดได้มากน้อยแค่ไหน
+        order_pct_allocation: 0.33  # ดึงทุนต่อไม้ (คิดจาก b_alloc) เพื่อทำ scalp
       buy_the_dip:
         enabled: false
         dip_threshold: 0.05        # ต่ำกว่า "บันไดล่าสุด" อีกกี่ % ถึงนับว่า overshoot
