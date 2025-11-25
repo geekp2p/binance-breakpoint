@@ -274,9 +274,15 @@ class StrategyState:
             return self.trail.s1
 
         base = max(self.trail.s1, sys.float_info.min)
-        max_power = math.log(sys.float_info.max / base, self.trail.m_step)
+        m_step = max(self.trail.m_step, sys.float_info.min)
+        max_power = math.log(sys.float_info.max / base, m_step)
         capped_power = min(stage - 1, max_power)
-        return self.trail.s1 * (self.trail.m_step ** capped_power)
+
+        log_base = math.log(base)
+        log_m_step = math.log(m_step)
+        max_log_value = math.log(sys.float_info.max)
+        log_result = min(log_base + capped_power * log_m_step, max_log_value)
+        return math.exp(log_result)
 
     def floor_price(self, P_BE):
         if self.Q <= 0 or P_BE is None:
