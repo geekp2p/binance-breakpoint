@@ -4,6 +4,7 @@ import hmac
 import hashlib
 import logging
 from typing import Any, Dict, Optional
+from urllib.parse import urlencode
 
 import requests
 
@@ -22,7 +23,7 @@ class BinanceClient:
         self._symbol_cache: Dict[str, Dict[str, Any]] = {}
 
     def _sign(self, params: Dict[str, Any]) -> Dict[str, Any]:
-        payload = "&".join(f"{k}={params[k]}" for k in sorted(params))
+        payload = urlencode(params, doseq=True)
         signature = hmac.new(self.api_secret, payload.encode(), hashlib.sha256).hexdigest()
         params["signature"] = signature
         return params
