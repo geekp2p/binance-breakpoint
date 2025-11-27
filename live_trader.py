@@ -3,6 +3,7 @@ import json
 import logging
 import os
 import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -138,260 +139,282 @@ def main() -> None:
     if not pairs_raw:
         raise SystemExit("No pairs defined in config")
 
-    symbol = args.symbol.upper() if args.symbol else pairs_raw[0]["symbol"].upper()
-    target_raw = next((p for p in pairs_raw if p["symbol"].upper() == symbol), None)
-    if target_raw is None:
-        raise SystemExit(f"Symbol {symbol} not found in config")
+    def run_pair(pair_raw: Dict) -> None:
+        pair_cfg = build_pair_config(pair_raw, general)
+        state = init_state_from_config(pair_cfg)
 
-    pair_cfg = build_pair_config(target_raw, general)
-    state = init_state_from_config(pair_cfg)
+        latest = fetch_previous_closed(pair_cfg.symbol, pair_cfg.interval, base_url)
+        if latest is None:
+            raise SystemExit("Unable to seed state with latest kline")
 
-    latest = fetch_previous_closed(pair_cfg.symbol, pair_cfg.interval, base_url)
-    if latest is None:
-        raise SystemExit("Unable to seed state with latest kline")
+        savepoint_dir = Path(args.savepoint_dir) / pair_cfg.symbol.upper()
+        savepoint_payload = load_savepoint(savepoint_dir, pair_cfg.symbol)
 
-    savepoint_dir = Path(args.savepoint_dir)
-    savepoint_payload = load_savepoint(savepoint_dir, pair_cfg.symbol)
+        event_log: List[Dict[str, object]] = []
+        event_ptr = 0
+        activity_history: List[Dict[str, object]] = []
+        realized_pnl_total = 0.0
+        last_open_time = 0
 
-    event_log: List[Dict[str, object]] = []
-    event_ptr = 0
-    activity_history: List[Dict[str, object]] = []
-    realized_pnl_total = 0.0
-    last_open_time = 0
-
-    if savepoint_payload and savepoint_payload.get("state"):
-        apply_payload_to_state(state, savepoint_payload["state"])
-        event_log = list(savepoint_payload.get("event_log", []))
-        event_ptr = len(event_log)
-        activity_history = list(savepoint_payload.get("activity_history", []))
-        if len(activity_history) > MAX_HISTORY_ENTRIES:
-            activity_history = activity_history[-MAX_HISTORY_ENTRIES:]
-        last_open_time = int(savepoint_payload.get("last_open_time") or 0)
-        realized_pnl_total = float(savepoint_payload.get("realized_pnl_total") or 0.0)
-        logging.info(
-            "Loaded savepoint for %s from %s",
-            pair_cfg.symbol,
-            savepoint_dir.joinpath(f"{pair_cfg.symbol.upper()}.json"),
-        )
-        resume_status = savepoint_payload.get("status") or {}
-        logging.info(
-            "Resumed status | phase=%s | stage=%s | qty=%.6f | price=%.4f | realized_total=%.2f",
-            resume_status.get("phase", "N/A"),
-            resume_status.get("stage", "N/A"),
-            float(resume_status.get("qty") or 0.0),
-            float(resume_status.get("price") or 0.0),
-            float(resume_status.get("realized_pnl_total") or 0.0),
-        )
-    else:
-        reset_round(state, latest["close"], latest["timestamp"])
-
-    if state.P0 is None:
-        reset_round(state, latest["close"], latest["timestamp"])
-
-    api_key = os.getenv("BINANCE_API_KEY", cfg.get("api", {}).get("key", ""))
-    api_secret = os.getenv("BINANCE_API_SECRET", cfg.get("api", {}).get("secret", ""))
-
-    client: Optional[BinanceClient] = None
-    base_asset: str = ""
-    if not args.dry_run:
-        if not api_key or not api_secret:
-            raise SystemExit("Live trading requires BINANCE_API_KEY and BINANCE_API_SECRET")
-        client = BinanceClient(api_key, api_secret, base_url=base_url)
-        try:
-            sym_info = client.get_symbol_info(pair_cfg.symbol)
-            base_asset = str(sym_info.get("baseAsset", "")).upper()
-        except Exception:
-            logging.warning("Unable to fetch symbol metadata; commission adjustments disabled")
-
-    logging.info("Starting live trading for %s (%s)", pair_cfg.symbol, pair_cfg.interval)
-    logging.info("Dry run mode: %s", "ON" if args.dry_run else "OFF")
-
-    interval_ms = INTERVAL_MS[pair_cfg.interval]
-
-    def record_history(event: Dict[str, object]) -> None:
-        copy = dict(event)
-        activity_history.append(copy)
-        if len(activity_history) > MAX_HISTORY_ENTRIES:
-            del activity_history[: len(activity_history) - MAX_HISTORY_ENTRIES]
-
-    def build_status_snapshot(current_price: float, ts: datetime) -> Dict[str, object]:
-        p_be = state.P_BE()
-        floor_price = state.floor_price(p_be) if p_be is not None else None
-        avg_price = (state.C / state.Q) if state.Q > 0 else None
-        unrealized_pnl = None
-        if state.Q > 0:
-            proceeds = current_price * state.Q * (1 - state.fees_sell)
-            unrealized_pnl = proceeds - state.C
-        next_buy = state.ladder_prices[state.ladder_next_idx] if state.ladder_next_idx < len(state.ladder_prices) else None
-        return {
-            "timestamp": ts.isoformat(),
-            "price": current_price,
-            "phase": state.phase,
-            "stage": state.stage,
-            "qty": state.Q,
-            "quote_spent": state.C,
-            "avg_price": avg_price,
-            "p_be": p_be,
-            "floor_price": floor_price,
-            "next_buy_price": next_buy,
-            "ladder_index": state.ladder_next_idx,
-            "ladder_total": len(state.ladder_prices),
-            "unrealized_pnl": unrealized_pnl,
-            "realized_pnl_total": realized_pnl_total,
-        }
-
-    def log_status(status: Dict[str, object]) -> None:
-        parts = [
-            f"price={status['price']:.4f}",
-            f"phase={status['phase']}",
-            f"stage={status['stage']}",
-            f"qty={status['qty']:.6f}",
-        ]
-        if status["avg_price"] is not None:
-            parts.append(f"avg={status['avg_price']:.4f}")
-        if status["p_be"] is not None:
-            parts.append(f"P_BE={status['p_be']:.4f}")
-        if status["floor_price"] is not None:
-            parts.append(f"floor={status['floor_price']:.4f}")
-        if status["next_buy_price"] is not None:
-            parts.append(f"next_buy={status['next_buy_price']:.4f}")
-        if status["unrealized_pnl"] is not None:
-            parts.append(f"unrealized={status['unrealized_pnl']:.2f}")
-        parts.append(f"realized_total={status['realized_pnl_total']:.2f}")
-        logging.info("Status | %s", " | ".join(parts))
-
-    startup_status = build_status_snapshot(latest["close"], latest["timestamp"])
-    log_status(startup_status)
-    write_savepoint(
-        savepoint_dir,
-        pair_cfg.symbol,
-        state,
-        last_open_time=last_open_time,
-        event_log=event_log,
-        activity_history=activity_history,
-        realized_pnl_total=realized_pnl_total,
-        latest_price=latest["close"],
-        status=startup_status,
-    )
-
-    while True:
-        try:
-            kline = fetch_previous_closed(pair_cfg.symbol, pair_cfg.interval, base_url)
-            if not kline:
-                time.sleep(args.poll_seconds)
-                continue
-            if kline["open_time"] == last_open_time:
-                time.sleep(args.poll_seconds)
-                continue
-
-            ts = kline["timestamp"]
-            res = state.on_bar(ts, kline["open"], kline["high"], kline["low"], kline["close"], kline["volume"], event_log)
-            new_events = event_log[event_ptr:]
+        if savepoint_payload and savepoint_payload.get("state"):
+            apply_payload_to_state(state, savepoint_payload["state"])
+            event_log = list(savepoint_payload.get("event_log", []))
             event_ptr = len(event_log)
-
-            for ev in new_events:
-                record_history(ev)
-                evt = ev.get("event")
-                if evt == "BUY":
-                    quote_amt = float(ev.get("amt_q", 0.0))
-                    logging.info("BUY ladder fill at %.4f for quote %.2f", ev.get("price"), quote_amt)
-                    if client and quote_amt > 0:
-                        response = client.market_buy_quote(pair_cfg.symbol, quote_amt)
-                        logging.info("Order response: %s", json.dumps(response))
-                        executed_qty = float(response.get("executedQty") or 0.0)
-                        fills = response.get("fills") or []
-                        commission_base = 0.0
-                        if base_asset:
-                            for f in fills:
-                                try:
-                                    if str(f.get("commissionAsset", "")).upper() == base_asset:
-                                        commission_base += float(f.get("commission", 0.0))
-                                except (TypeError, ValueError):
-                                    continue
-                        net_qty = max(executed_qty - commission_base, 0.0)
-                        expected_qty = float(ev.get("q") or ev.get("qty") or 0.0)
-                        if net_qty < expected_qty:
-                            adjustment = net_qty - expected_qty
-                            state.Q += adjustment
-                            logging.info(
-                                "Adjusted position for commission: expected %.8f, net %.8f, delta %.8f",
-                                expected_qty,
-                                net_qty,
-                                adjustment,
-                            )
-                elif evt == "BTD_ORDER":
-                    logging.info("BTD order suggested at %.4f for quote %.2f", ev.get("order_price"), ev.get("order_quote", 0.0))
-                elif evt == "SELL":
-                    logging.info("Strategy logged SELL event: %s", ev)
-
-            if res is not None:
-                qty = float(res.get("qty") or 0.0)
-                sell_qty = qty
-                logging.info(
-                    "Exit signal %s at %.4f (qty %.6f, pnl %.2f)",
-                    res.get("reason"),
-                    res.get("sell_price"),
-                    sell_qty,
-                    res.get("pnl", 0.0),
-                )
-                if client and sell_qty > 0:
-                    if base_asset:
-                        try:
-                            available = client.get_free_balance(base_asset)
-                            if available < sell_qty:
-                                logging.warning(
-                                    "Requested sell qty %.6f exceeds available %.6f; clamping",
-                                    sell_qty,
-                                    available,
-                                )
-                                sell_qty = available
-                        except Exception as exc:
-                            logging.warning("Unable to fetch %s balance: %s", base_asset, exc)
-                    if sell_qty > 0:
-                        response = client.market_sell(pair_cfg.symbol, sell_qty)
-                        logging.info("Sell response: %s", json.dumps(response))
-                realized_pnl = float(res.get("pnl") or 0.0)
-                if qty > 0 and sell_qty != qty:
-                    realized_pnl *= sell_qty / qty
-                realized_pnl_total += realized_pnl
-                record_history(
-                    {
-                        "ts": ts,
-                        "event": "EXIT",
-                        "reason": res.get("reason"),
-                        "sell_price": res.get("sell_price"),
-                        "qty": qty,
-                        "pnl": realized_pnl,
-                        "realized_pnl_total": realized_pnl_total,
-                    }
-                )
-                reset_round(state, kline["close"], ts)
-                event_log.clear()
-                event_ptr = 0
-
-            last_open_time = kline["open_time"]
-            status_snapshot = build_status_snapshot(kline["close"], ts)
-            log_status(status_snapshot)
-            write_savepoint(
-                savepoint_dir,
+            activity_history = list(savepoint_payload.get("activity_history", []))
+            if len(activity_history) > MAX_HISTORY_ENTRIES:
+                activity_history = activity_history[-MAX_HISTORY_ENTRIES:]
+            last_open_time = int(savepoint_payload.get("last_open_time") or 0)
+            realized_pnl_total = float(savepoint_payload.get("realized_pnl_total") or 0.0)
+            logging.info(
+                "Loaded savepoint for %s from %s",
                 pair_cfg.symbol,
-                state,
-                last_open_time=last_open_time,
-                event_log=event_log,
-                activity_history=activity_history,
-                realized_pnl_total=realized_pnl_total,
-                latest_price=kline["close"],
-                status=status_snapshot,
+                savepoint_dir.joinpath(f"{pair_cfg.symbol.upper()}.json"),
             )
+            resume_status = savepoint_payload.get("status") or {}
+            logging.info(
+                "Resumed status | phase=%s | stage=%s | qty=%.6f | price=%.4f | realized_total=%.2f",
+                resume_status.get("phase", "N/A"),
+                resume_status.get("stage", "N/A"),
+                float(resume_status.get("qty") or 0.0),
+                float(resume_status.get("price") or 0.0),
+                float(resume_status.get("realized_pnl_total") or 0.0),
+            )
+        else:
+            reset_round(state, latest["close"], latest["timestamp"])
 
-            sleep_time = max(args.poll_seconds, interval_ms / 1000.0 / 2)
-            time.sleep(sleep_time)
-        except requests.RequestException as exc:
-            logging.error("Network error: %s", exc)
-            time.sleep(args.poll_seconds)
-        except Exception as exc:  # pylint: disable=broad-except
-            logging.exception("Unexpected error: %s", exc)
-            time.sleep(args.poll_seconds)
+        if state.P0 is None:
+            reset_round(state, latest["close"], latest["timestamp"])
+
+        api_key = os.getenv("BINANCE_API_KEY", cfg.get("api", {}).get("key", ""))
+        api_secret = os.getenv("BINANCE_API_SECRET", cfg.get("api", {}).get("secret", ""))
+
+        client: Optional[BinanceClient] = None
+        base_asset: str = ""
+        if not args.dry_run:
+            if not api_key or not api_secret:
+                raise SystemExit("Live trading requires BINANCE_API_KEY and BINANCE_API_SECRET")
+            client = BinanceClient(api_key, api_secret, base_url=base_url)
+            try:
+                sym_info = client.get_symbol_info(pair_cfg.symbol)
+                base_asset = str(sym_info.get("baseAsset", "")).upper()
+            except Exception:
+                logging.warning("Unable to fetch symbol metadata; commission adjustments disabled")
+
+        logging.info("Starting live trading for %s (%s)", pair_cfg.symbol, pair_cfg.interval)
+        logging.info("Dry run mode: %s", "ON" if args.dry_run else "OFF")
+
+        interval_ms = INTERVAL_MS[pair_cfg.interval]
+
+        def record_history(event: Dict[str, object]) -> None:
+            copy = dict(event)
+            activity_history.append(copy)
+            if len(activity_history) > MAX_HISTORY_ENTRIES:
+                del activity_history[: len(activity_history) - MAX_HISTORY_ENTRIES]
+
+        def build_status_snapshot(current_price: float, ts: datetime) -> Dict[str, object]:
+            p_be = state.P_BE()
+            floor_price = state.floor_price(p_be) if p_be is not None else None
+            avg_price = (state.C / state.Q) if state.Q > 0 else None
+            unrealized_pnl = None
+            if state.Q > 0:
+                proceeds = current_price * state.Q * (1 - state.fees_sell)
+                unrealized_pnl = proceeds - state.C
+            next_buy = (
+                state.ladder_prices[state.ladder_next_idx]
+                if state.ladder_next_idx < len(state.ladder_prices)
+                else None
+            )
+            return {
+                "timestamp": ts.isoformat(),
+                "price": current_price,
+                "phase": state.phase,
+                "stage": state.stage,
+                "qty": state.Q,
+                "quote_spent": state.C,
+                "avg_price": avg_price,
+                "p_be": p_be,
+                "floor_price": floor_price,
+                "next_buy_price": next_buy,
+                "ladder_index": state.ladder_next_idx,
+                "ladder_total": len(state.ladder_prices),
+                "unrealized_pnl": unrealized_pnl,
+                "realized_pnl_total": realized_pnl_total,
+            }
+
+        def log_status(status: Dict[str, object]) -> None:
+            parts = [
+                f"price={status['price']:.4f}",
+                f"phase={status['phase']}",
+                f"stage={status['stage']}",
+                f"qty={status['qty']:.6f}",
+            ]
+            if status["avg_price"] is not None:
+                parts.append(f"avg={status['avg_price']:.4f}")
+            if status["p_be"] is not None:
+                parts.append(f"P_BE={status['p_be']:.4f}")
+            if status["floor_price"] is not None:
+                parts.append(f"floor={status['floor_price']:.4f}")
+            if status["next_buy_price"] is not None:
+                parts.append(f"next_buy={status['next_buy_price']:.4f}")
+            if status["unrealized_pnl"] is not None:
+                parts.append(f"unrealized={status['unrealized_pnl']:.2f}")
+            parts.append(f"realized_total={status['realized_pnl_total']:.2f}")
+            logging.info("Status | %s", " | ".join(parts))
+
+        startup_status = build_status_snapshot(latest["close"], latest["timestamp"])
+        log_status(startup_status)
+        write_savepoint(
+            savepoint_dir,
+            pair_cfg.symbol,
+            state,
+            last_open_time=last_open_time,
+            event_log=event_log,
+            activity_history=activity_history,
+            realized_pnl_total=realized_pnl_total,
+            latest_price=latest["close"],
+            status=startup_status,
+        )
+
+        while True:
+            try:
+                kline = fetch_previous_closed(pair_cfg.symbol, pair_cfg.interval, base_url)
+                if not kline:
+                    time.sleep(args.poll_seconds)
+                    continue
+                if kline["open_time"] == last_open_time:
+                    time.sleep(args.poll_seconds)
+                    continue
+
+                ts = kline["timestamp"]
+                res = state.on_bar(
+                    ts,
+                    kline["open"],
+                    kline["high"],
+                    kline["low"],
+                    kline["close"],
+                    kline["volume"],
+                    event_log,
+                )
+                new_events = event_log[event_ptr:]
+                event_ptr = len(event_log)
+
+                for ev in new_events:
+                    record_history(ev)
+                    evt = ev.get("event")
+                    if evt == "BUY":
+                        quote_amt = float(ev.get("amt_q", 0.0))
+                        logging.info("BUY ladder fill at %.4f for quote %.2f", ev.get("price"), quote_amt)
+                        if client and quote_amt > 0:
+                            response = client.market_buy_quote(pair_cfg.symbol, quote_amt)
+                            logging.info("Order response: %s", json.dumps(response))
+                            executed_qty = float(response.get("executedQty") or 0.0)
+                            fills = response.get("fills") or []
+                            commission_base = 0.0
+                            if base_asset:
+                                for f in fills:
+                                    try:
+                                        if str(f.get("commissionAsset", "")).upper() == base_asset:
+                                            commission_base += float(f.get("commission", 0.0))
+                                    except (TypeError, ValueError):
+                                        continue
+                            net_qty = max(executed_qty - commission_base, 0.0)
+                            expected_qty = float(ev.get("q") or ev.get("qty") or 0.0)
+                            if net_qty < expected_qty:
+                                adjustment = net_qty - expected_qty
+                                state.Q += adjustment
+                                logging.info(
+                                    "Adjusted position for commission: expected %.8f, net %.8f, delta %.8f",
+                                    expected_qty,
+                                    net_qty,
+                                    adjustment,
+                                )
+                    elif evt == "BTD_ORDER":
+                        logging.info(
+                            "BTD order suggested at %.4f for quote %.2f",
+                            ev.get("order_price"),
+                            ev.get("order_quote", 0.0),
+                        )
+                    elif evt == "SELL":
+                        logging.info("Strategy logged SELL event: %s", ev)
+
+                if res is not None:
+                    qty = float(res.get("qty") or 0.0)
+                    sell_qty = qty
+                    logging.info(
+                        "Exit signal %s at %.4f (qty %.6f, pnl %.2f)",
+                        res.get("reason"),
+                        res.get("sell_price"),
+                        sell_qty,
+                        res.get("pnl", 0.0),
+                    )
+                    if client and sell_qty > 0:
+                        if base_asset:
+                            try:
+                                available = client.get_free_balance(base_asset)
+                                if available < sell_qty:
+                                    logging.warning(
+                                        "Requested sell qty %.6f exceeds available %.6f; clamping",
+                                        sell_qty,
+                                        available,
+                                    )
+                                    sell_qty = available
+                            except Exception as exc:
+                                logging.warning("Unable to fetch %s balance: %s", base_asset, exc)
+                        if sell_qty > 0:
+                            response = client.market_sell(pair_cfg.symbol, sell_qty)
+                            logging.info("Sell response: %s", json.dumps(response))
+                    realized_pnl = float(res.get("pnl") or 0.0)
+                    if qty > 0 and sell_qty != qty:
+                        realized_pnl *= sell_qty / qty
+                    realized_pnl_total += realized_pnl
+                    record_history(
+                        {
+                            "ts": ts,
+                            "event": "EXIT",
+                            "reason": res.get("reason"),
+                            "sell_price": res.get("sell_price"),
+                            "qty": qty,
+                            "pnl": realized_pnl,
+                            "realized_pnl_total": realized_pnl_total,
+                        }
+                    )
+                    reset_round(state, kline["close"], ts)
+                    event_log.clear()
+                    event_ptr = 0
+
+                last_open_time = kline["open_time"]
+                status_snapshot = build_status_snapshot(kline["close"], ts)
+                log_status(status_snapshot)
+                write_savepoint(
+                    savepoint_dir,
+                    pair_cfg.symbol,
+                    state,
+                    last_open_time=last_open_time,
+                    event_log=event_log,
+                    activity_history=activity_history,
+                    realized_pnl_total=realized_pnl_total,
+                    latest_price=kline["close"],
+                    status=status_snapshot,
+                )
+
+                sleep_time = max(args.poll_seconds, interval_ms / 1000.0 / 2)
+                time.sleep(sleep_time)
+            except requests.RequestException as exc:
+                logging.error("Network error: %s", exc)
+                time.sleep(args.poll_seconds)
+            except Exception as exc:  # pylint: disable=broad-except
+                logging.exception("Unexpected error: %s", exc)
+                time.sleep(args.poll_seconds)
+
+    symbol_filter = args.symbol.upper() if args.symbol else None
+    selected_pairs = [p for p in pairs_raw if symbol_filter is None or p["symbol"].upper() == symbol_filter]
+    if not selected_pairs:
+        raise SystemExit(f"Symbol {symbol_filter} not found in config")
+
+    with ThreadPoolExecutor(max_workers=len(selected_pairs)) as executor:
+        futures = [executor.submit(run_pair, pair_raw) for pair_raw in selected_pairs]
+        for future in futures:
+            future.result()
 
 
 if __name__ == "__main__":
