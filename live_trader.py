@@ -1,4 +1,5 @@
 import argparse
+import csv
 import json
 import logging
 import os
@@ -153,6 +154,8 @@ def main() -> None:
         event_log: List[Dict[str, object]] = []
         event_ptr = 0
         activity_history: List[Dict[str, object]] = []
+        event_persist_count = 0
+        activity_persist_count = 0
         realized_pnl_total = 0.0
         last_open_time = 0
 
@@ -182,6 +185,73 @@ def main() -> None:
         else:
             reset_round(state, latest["close"], latest["timestamp"])
 
+        history_jsonl = savepoint_dir / f"{pair_cfg.symbol.upper()}_event_log.jsonl"
+        history_csv = savepoint_dir / f"{pair_cfg.symbol.upper()}_event_log.csv"
+        activity_jsonl = savepoint_dir / f"{pair_cfg.symbol.upper()}_activity_history.jsonl"
+        activity_csv = savepoint_dir / f"{pair_cfg.symbol.upper()}_activity_history.csv"
+
+        def _normalise_event(event: Dict[str, object]) -> Dict[str, object]:
+            normalised: Dict[str, object] = {}
+            for key, val in event.items():
+                if isinstance(val, datetime):
+                    normalised[key] = val.isoformat()
+                else:
+                    normalised[key] = val
+            return normalised
+
+        def _count_lines(path: Path) -> int:
+            if not path.exists():
+                return 0
+            try:
+                with path.open("r", encoding="utf-8") as fh:
+                    return sum(1 for _ in fh)
+            except OSError:
+                return 0
+
+        def _persist_records(records: List[Dict[str, object]], jsonl_path: Path, csv_path: Path) -> None:
+            if not records:
+                return
+            jsonl_path.parent.mkdir(parents=True, exist_ok=True)
+            write_header = not csv_path.exists()
+            with jsonl_path.open("a", encoding="utf-8") as jf, csv_path.open(
+                "a", encoding="utf-8", newline=""
+            ) as cf:
+                writer = csv.DictWriter(cf, fieldnames=["ts", "event", "details_json"])
+                if write_header:
+                    writer.writeheader()
+                for rec in records:
+                    norm = _normalise_event(rec)
+                    jf.write(json.dumps(norm, ensure_ascii=False) + "\n")
+                    ts = norm.get("ts") or norm.get("timestamp") or norm.get("time")
+                    evt = norm.get("event") or norm.get("type")
+                    details = {
+                        k: v
+                        for k, v in norm.items()
+                        if k
+                        not in (
+                            "ts",
+                            "timestamp",
+                            "time",
+                            "event",
+                            "type",
+                        )
+                    }
+                    writer.writerow(
+                        {
+                            "ts": ts,
+                            "event": evt,
+                            "details_json": json.dumps(details, ensure_ascii=False),
+                        }
+                    )
+
+        def _sync_history(
+            records: List[Dict[str, object]], jsonl_path: Path, csv_path: Path
+        ) -> int:
+            existing_lines = _count_lines(jsonl_path)
+            start_idx = min(existing_lines, len(records))
+            _persist_records(records[start_idx:], jsonl_path, csv_path)
+            return len(records)
+
         if state.P0 is None:
             reset_round(state, latest["close"], latest["timestamp"])
 
@@ -205,11 +275,26 @@ def main() -> None:
 
         interval_ms = INTERVAL_MS[pair_cfg.interval]
 
+        event_persist_count = _sync_history(event_log, history_jsonl, history_csv)
+        activity_persist_count = _sync_history(
+            activity_history, activity_jsonl, activity_csv
+        )
+
+        def persist_event_log_delta() -> None:
+            nonlocal event_persist_count
+            delta = event_log[event_persist_count:]
+            _persist_records(delta, history_jsonl, history_csv)
+            event_persist_count = len(event_log)
+
         def record_history(event: Dict[str, object]) -> None:
+            nonlocal activity_persist_count
             copy = dict(event)
             activity_history.append(copy)
             if len(activity_history) > MAX_HISTORY_ENTRIES:
                 del activity_history[: len(activity_history) - MAX_HISTORY_ENTRIES]
+            delta = activity_history[activity_persist_count:]
+            _persist_records(delta, activity_jsonl, activity_csv)
+            activity_persist_count = len(activity_history)
 
         def build_status_snapshot(current_price: float, ts: datetime) -> Dict[str, object]:
             p_be = state.P_BE()
@@ -297,6 +382,7 @@ def main() -> None:
                 )
                 new_events = event_log[event_ptr:]
                 event_ptr = len(event_log)
+                persist_event_log_delta()
 
                 for ev in new_events:
                     record_history(ev)
@@ -381,6 +467,7 @@ def main() -> None:
                     reset_round(state, kline["close"], ts)
                     event_log.clear()
                     event_ptr = 0
+                    event_persist_count = 0
 
                 last_open_time = kline["open_time"]
                 status_snapshot = build_status_snapshot(kline["close"], ts)
