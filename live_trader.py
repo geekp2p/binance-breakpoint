@@ -192,10 +192,16 @@ def main() -> None:
     api_secret = os.getenv("BINANCE_API_SECRET", cfg.get("api", {}).get("secret", ""))
 
     client: Optional[BinanceClient] = None
+    base_asset: str = ""
     if not args.dry_run:
         if not api_key or not api_secret:
             raise SystemExit("Live trading requires BINANCE_API_KEY and BINANCE_API_SECRET")
         client = BinanceClient(api_key, api_secret, base_url=base_url)
+        try:
+            sym_info = client.get_symbol_info(pair_cfg.symbol)
+            base_asset = str(sym_info.get("baseAsset", "")).upper()
+        except Exception:
+            logging.warning("Unable to fetch symbol metadata; commission adjustments disabled")
 
     logging.info("Starting live trading for %s (%s)", pair_cfg.symbol, pair_cfg.interval)
     logging.info("Dry run mode: %s", "ON" if args.dry_run else "OFF")
@@ -292,6 +298,27 @@ def main() -> None:
                     if client and quote_amt > 0:
                         response = client.market_buy_quote(pair_cfg.symbol, quote_amt)
                         logging.info("Order response: %s", json.dumps(response))
+                        executed_qty = float(response.get("executedQty") or 0.0)
+                        fills = response.get("fills") or []
+                        commission_base = 0.0
+                        if base_asset:
+                            for f in fills:
+                                try:
+                                    if str(f.get("commissionAsset", "")).upper() == base_asset:
+                                        commission_base += float(f.get("commission", 0.0))
+                                except (TypeError, ValueError):
+                                    continue
+                        net_qty = max(executed_qty - commission_base, 0.0)
+                        expected_qty = float(ev.get("q") or ev.get("qty") or 0.0)
+                        if net_qty < expected_qty:
+                            adjustment = net_qty - expected_qty
+                            state.Q += adjustment
+                            logging.info(
+                                "Adjusted position for commission: expected %.8f, net %.8f, delta %.8f",
+                                expected_qty,
+                                net_qty,
+                                adjustment,
+                            )
                 elif evt == "BTD_ORDER":
                     logging.info("BTD order suggested at %.4f for quote %.2f", ev.get("order_price"), ev.get("order_quote", 0.0))
                 elif evt == "SELL":
