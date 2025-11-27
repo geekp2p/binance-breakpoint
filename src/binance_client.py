@@ -75,6 +75,19 @@ class BinanceClient:
                 return float(self._format_number(adjusted, precision))
         return quantity
 
+    def get_free_balance(self, asset: str) -> float:
+        """Return the available ("free") balance for the given asset."""
+
+        account = self._request("GET", "/api/v3/account", signed=True)
+        target = asset.upper()
+        for bal in account.get("balances", []):
+            if str(bal.get("asset", "")).upper() == target:
+                try:
+                    return float(bal.get("free") or 0.0)
+                except (TypeError, ValueError):
+                    return 0.0
+        return 0.0
+
     def market_buy_quote(self, symbol: str, quote_amount: float) -> Dict[str, Any]:
         params = {
             "symbol": symbol.upper(),

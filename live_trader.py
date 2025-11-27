@@ -326,17 +326,33 @@ def main() -> None:
 
             if res is not None:
                 qty = float(res.get("qty") or 0.0)
+                sell_qty = qty
                 logging.info(
                     "Exit signal %s at %.4f (qty %.6f, pnl %.2f)",
                     res.get("reason"),
                     res.get("sell_price"),
-                    qty,
+                    sell_qty,
                     res.get("pnl", 0.0),
                 )
-                if client and qty > 0:
-                    response = client.market_sell(pair_cfg.symbol, qty)
-                    logging.info("Sell response: %s", json.dumps(response))
+                if client and sell_qty > 0:
+                    if base_asset:
+                        try:
+                            available = client.get_free_balance(base_asset)
+                            if available < sell_qty:
+                                logging.warning(
+                                    "Requested sell qty %.6f exceeds available %.6f; clamping",
+                                    sell_qty,
+                                    available,
+                                )
+                                sell_qty = available
+                        except Exception as exc:
+                            logging.warning("Unable to fetch %s balance: %s", base_asset, exc)
+                    if sell_qty > 0:
+                        response = client.market_sell(pair_cfg.symbol, sell_qty)
+                        logging.info("Sell response: %s", json.dumps(response))
                 realized_pnl = float(res.get("pnl") or 0.0)
+                if qty > 0 and sell_qty != qty:
+                    realized_pnl *= sell_qty / qty
                 realized_pnl_total += realized_pnl
                 record_history(
                     {

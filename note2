@@ -13,3 +13,28 @@ binance-breakpoint-live  | 2025-11-27 13:17:03,885 [INFO] Submitting MARKET SELL
 binance-breakpoint-live  | 2025-11-27 13:17:03,995 [ERROR] Binance error 400: {"code":-2010,"msg":"Account has insufficient balance for requested action."}
 binance-breakpoint-live  | 2025-11-27 13:17:03,995 [ERROR] Network error: 400 Client Error: Bad Request for url: https://api.binance.com/api/v3/order
 binance-breakpoint-live  | 2025-11-27 13:17:14,150 [INFO] Status | price=513.0800 | phase=ACCUMULATE | stage=0 | qty=0.000000 | next_buy=500.2820 | realized_total=0.00
+
+
+
+
+
+
+binance-breakpoint-live  | 2025-11-27 19:53:09,972 [INFO] BUY ladder fill at 499.6530 for quote 63.16
+binance-breakpoint-live  | 2025-11-27 19:53:09,973 [INFO] Submitting MARKET BUY for ZECUSDT with 63.15789474 quote
+binance-breakpoint-live  | 2025-11-27 19:53:10,149 [INFO] Order response: {"symbol": "ZECUSDT", "orderId": 3488477407, "orderListId": -1, "clientOrderId": "QPgavxy1AKOkKOY8XIHTck", "transactTime": 1764247990120, "price": "0.00000000", "origQty": "0.12600000", "executedQty": "0.12600000", "origQuoteOrderQty": "63.15789474", "cummulativeQuoteQty": "62.96472000", "status": "FILLED", "timeInForce": "GTC", "type": "MARKET", "side": "BUY", "workingTime": 1764247990120, "fills": [{"price": "499.72000000", "qty": "0.12600000", "commission": "0.00012600", "commissionAsset": "ZEC", "tradeId": 179739048}], "selfTradePreventionMode": "EXPIRE_MAKER"}
+binance-breakpoint-live  | 2025-11-27 19:53:10,149 [INFO] Adjusted position for commission: expected 0.12640351, net 0.12587400, delta -0.00052951
+binance-breakpoint-live  | 2025-11-27 19:53:10,149 [INFO] Status | price=499.1200 | phase=ACCUMULATE | stage=0 | qty=0.125874 | avg=502.2566 | P_BE=502.7594 | floor=505.2732 | next_buy=489.6599 | unrealized=-0.46 | realized_total=0.00
+binance-breakpoint-live  | 2025-11-27 19:54:10,827 [INFO] Status | price=499.0000 | phase=ACCUMULATE | stage=0 | qty=0.125874 | avg=502.2566 | P_BE=502.7594 | floor=505.2732 | next_buy=489.6599 | unrealized=-0.47 | realized_total=0.00
+binance-breakpoint-live  | 2025-11-27 19:55:01,573 [INFO] Status | price=498.9500 | phase=ACCUMULATE | stage=0 | qty=0.125874 | avg=502.2566 | P_BE=502.7594 | floor=505.2732 | next_buy=489.6599 | unrealized=-0.48 | realized_total=0.00
+binance-breakpoint-live  | 2025-11-27 19:56:02,270 [INFO] Status | price=498.5500 | phase=ACCUMULATE | stage=0 | qty=0.125874 | avg=502.2566 | P_BE=502.7594 | floor=505.2732 | next_buy=489.6599 | unrealized=-0.53 | realized_total=0.00
+binance-breakpoint-live  | 2025-11-27 19:57:03,045 [INFO] Status | price=499.6700 | phase=ACCUMULATE | stage=0 | qty=0.125874 | avg=502.2566 | P_BE=502.7594 | floor=505.2732 | next_buy=489.6599 | unrealized=-0.39 | realized_total=0.00
+binance-breakpoint-live  | 2025-11-27 19:58:03,771 [INFO] Status | price=499.3300 | phase=ACCUMULATE | stage=0 | qty=0.125874 | avg=502.2566 | P_BE=502.7594 | floor=505.2732 | next_buy=489.6599 | unrealized=-0.43 | realized_total=0.00
+
+
+
+binance-breakpoint-live  | 2025-11-27 21:42:09,548 [INFO] Strategy logged SELL event: {'ts': datetime.datetime(2025, 11, 27, 14, 41, 59, 999000, tzinfo=datetime.timezone.utc), 'event': 'SELL', 'price': 499.0137895840369, 'proceeds': 301.5011999999999, 'pnl': 1.2011999999999716, 'note': 'TOTAL_CAP', 'qty': 0.6047989240028356}
+binance-breakpoint-live  | 2025-11-27 21:42:09,549 [INFO] Exit signal TOTAL_CAP at 499.0138 (qty 0.604799, pnl 1.20)
+binance-breakpoint-live  | 2025-11-27 21:42:09,550 [INFO] Submitting MARKET SELL for ZECUSDT with qty 0.604
+binance-breakpoint-live  | 2025-11-27 21:42:09,731 [ERROR] Binance error 400: {"code":-2010,"msg":"Account has insufficient balance for requested action."}
+binance-breakpoint-live  | 2025-11-27 21:42:09,734 [ERROR] Network error: 400 Client Error: Bad Request for url: https://api.binance.com/api/v3/order
+binance-breakpoint-live  | 2025-11-27 21:42:19,896 [INFO] Status | price=498.8300 | phase=ACCUMULATE | stage=0 | qty=0.000000 | next_buy=489.6599 | realized_total=0.00

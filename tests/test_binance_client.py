@@ -1,9 +1,14 @@
 import hashlib
 import hmac
+import sys
+from pathlib import Path
 from urllib.parse import urlencode
 
-from src.binance_client import BinanceClient
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
+from src.binance_client import BinanceClient
 
 def test_sign_uses_request_encoding_order():
     client = BinanceClient("key", "secret")
@@ -23,3 +28,24 @@ def test_sign_uses_request_encoding_order():
     assert signed["signature"] == expected_signature
     # Ensure we didn't mutate parameter order by sorting; the signature must reflect the encoded payload.
     assert signed["signature"] == hmac.new(b"secret", urlencode(params, doseq=True).encode(), hashlib.sha256).hexdigest()
+
+
+def test_get_free_balance_fetches_signed_account(monkeypatch):
+    client = BinanceClient("key", "secret")
+
+    calls = []
+
+    def fake_request(method, path, *, params=None, signed=False):
+        calls.append((method, path, signed))
+        return {
+            "balances": [
+                {"asset": "ZEC", "free": "1.234", "locked": "0.0"},
+                {"asset": "USDT", "free": "100.0", "locked": "0.0"},
+            ]
+        }
+
+    monkeypatch.setattr(client, "_request", fake_request)
+
+    assert client.get_free_balance("zec") == 1.234
+    assert client.get_free_balance("BTC") == 0.0
+    assert calls == [("GET", "/api/v3/account", True), ("GET", "/api/v3/account", True)]
