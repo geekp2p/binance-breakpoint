@@ -296,6 +296,31 @@ def main() -> None:
             _persist_records(delta, activity_jsonl, activity_csv)
             activity_persist_count = len(activity_history)
 
+        def rollback_failed_buy(ev: Dict[str, object], ts: datetime, exc: Exception) -> None:
+            qty = float(ev.get("q") or ev.get("qty") or 0.0)
+            quote_amt = float(ev.get("amt_q") or 0.0)
+            if qty > 0:
+                state.Q = max(state.Q - qty, 0.0)
+            if quote_amt > 0:
+                state.C = max(state.C - quote_amt * (1 + state.fees_buy), 0.0)
+            if state.ladder_next_idx > 0:
+                state.ladder_next_idx -= 1
+            logging.error(
+                "Market buy failed; rolled back expected position (qty %.8f, quote %.8f): %s",
+                qty,
+                quote_amt,
+                exc,
+            )
+            record_history(
+                {
+                    "ts": ts,
+                    "event": "BUY_FAILED",
+                    "reason": str(exc),
+                    "qty": qty,
+                    "quote": quote_amt,
+                }
+            )
+
         def build_status_snapshot(current_price: float, ts: datetime) -> Dict[str, object]:
             p_be = state.P_BE()
             floor_price = state.floor_price(p_be) if p_be is not None else None
@@ -391,7 +416,11 @@ def main() -> None:
                         quote_amt = float(ev.get("amt_q", 0.0))
                         logging.info("BUY ladder fill at %.4f for quote %.2f", ev.get("price"), quote_amt)
                         if client and quote_amt > 0:
-                            response = client.market_buy_quote(pair_cfg.symbol, quote_amt)
+                            try:
+                                response = client.market_buy_quote(pair_cfg.symbol, quote_amt)
+                            except requests.RequestException as exc:
+                                rollback_failed_buy(ev, ts, exc)
+                                continue
                             logging.info("Order response: %s", json.dumps(response))
                             executed_qty = float(response.get("executedQty") or 0.0)
                             fills = response.get("fills") or []
