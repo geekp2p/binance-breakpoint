@@ -18,6 +18,14 @@ docker compose up demo
 
 ผลลัพธ์: `./out/<SYMBOL>_{events,equity,trades,summary}.(csv/json)` + `plot.png`
 
+### PnL Summary (Backtest + Live)
+ใช้ `summary.py` เพื่อรวบรวม PnL จากไฟล์ backtest (`out/*summary*`) และสถานะ live (`savepoint/<SYMBOL>.json`)
+```bash
+python summary.py --savepoint-dir savepoint --out-dir out
+```
+สคริปต์จะแสดงตาราง PnL รายไฟล์ + รวมตามคู่ แยกผลจากราคาเคลื่อนไหว (unrealized) กับกำไรขาดทุนจากเทรดที่ปิดไป (realized)
+
+
 ## Config
 - `config.yaml` — ตั้งค่าคู่/ช่วง/ฟีส์/พารามิเตอร์หลัก และ **features.BTD/SAH** (disabled)
   - เพิ่ม `features.scalp_mode` เพื่อ "เข้าเร็ว-ออกเร็ว" 1-3 ไม้แรก: กำหนด % ย่อที่ให้ซื้อ, % เด้งที่ขายทำกำไร และให้สเกลตามช่วงแกว่งของวัน (วัดจาก high-low ของรอบ) โดยจะหยุดหลังครบ `max_trades` และไม่ไปกินทุนบันไดหลัก (`b_alloc`) เกินโควตา `order_pct_allocation`
