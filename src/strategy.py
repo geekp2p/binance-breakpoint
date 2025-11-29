@@ -353,8 +353,11 @@ class StrategyState:
         price = trigger
         qty = order_quote / price
         cost = order_quote * (1 + self.fees_buy)
+        prev_qty = self.Q
         self.Q += qty
         self.C += cost
+        if prev_qty <= 0 < self.Q:
+            self.round_start_ts = ts
         target = price * (1 + thresholds["take_profit_pct"])
         self.scalp_positions.append({
             "entry": price,
@@ -560,8 +563,11 @@ class StrategyState:
                 amt_q = self.ladder_amounts_quote[self.ladder_next_idx]
                 if amt_q > 0:
                     q = (amt_q / trig)
+                    prev_qty = self.Q
                     self.Q += q
                     self.C += amt_q * (1 + self.fees_buy)
+                    if prev_qty <= 0 < self.Q:
+                        self.round_start_ts = ts
                     log_events.append({"ts": ts, "event":"BUY", "price": trig, "q": q, "amt_q": amt_q, "ladder_idx": self.ladder_next_idx+1})
                 self.ladder_next_idx += 1
                 continue
