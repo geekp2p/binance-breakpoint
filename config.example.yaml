@@ -24,5 +24,6 @@ pairs:
 general:
   snapshot_every_bars: 1
   use_maker: true
+  sell_scale_out: { chunks: 2, delay_seconds: 1, profit_only: true }
   binance: { base_url: "https://api.binance.com", retry: { attempts: 4, backoff_sec: 0.5 }, save_csv: true, data_dir: "data" }
 api: { key: ${BINANCE_API_KEY}, secret: ${BINANCE_API_SECRET} }

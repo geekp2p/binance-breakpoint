@@ -35,6 +35,8 @@ python summary.py --savepoint-dir savepoint --out-dir out
 ### Live Trader
 - `live_trader.py` จะอ่าน `config.yaml` และรันกลยุทธ์แบบรอบต่อรอบกับแท่งราคาที่ปิดล่าสุด (`klines`) จาก Binance
 - เมื่อเกิดสัญญาณซื้อ/ขายในบันไดหลัก จะส่งคำสั่ง **MARKET** ที่ปริมาณเท่ากับบันไดนั้น (BUY) หรือปริมาณคงเหลือ (SELL)
+- ตั้งค่าตัวเลือก `general.sell_scale_out` เพื่อ "เฉลี่ยขาย" ตอนมีกำไร: กำหนด `chunks` (จำนวนไม้ย่อย) และ `delay_seconds` (พักระหว่างไม้) ถ้าเปิด `profit_only: true` จะเฉลี่ยขายเฉพาะตอนสัญญาณทำกำไรเท่านั้น
+- ระบบจะเช็คยอด `quote` ฟรีก่อนยิงคำสั่ง BUY และจะลดขนาดออเดอร์ให้อัตโนมัติถ้าเงินคงเหลือไม่พอ เพื่อกัน error `Account has insufficient balance` แล้วเลื่อนขั้นบันไดผิดพลาด
 - ตั้ง `--dry-run` เพื่อทดลองโดยไม่ส่งคำสั่งจริง: `python live_trader.py --dry-run --symbol ZECUSDT`
 - ใน Docker ใช้บริการ `live` (ต้องมี `.env` ใส่คีย์) และควรติดตาม log อย่างใกล้ชิด
 

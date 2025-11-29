@@ -140,6 +140,11 @@ def main() -> None:
     if not pairs_raw:
         raise SystemExit("No pairs defined in config")
 
+    sell_scale_out_cfg = (general.get("sell_scale_out") or {})
+    sell_chunks = max(int(sell_scale_out_cfg.get("chunks", 1)), 1)
+    sell_chunk_delay = float(sell_scale_out_cfg.get("delay_seconds", 0.0))
+    sell_profit_only = bool(sell_scale_out_cfg.get("profit_only", True))
+
     def run_pair(pair_raw: Dict) -> None:
         pair_cfg = build_pair_config(pair_raw, general)
         state = init_state_from_config(pair_cfg)
@@ -410,16 +415,56 @@ def main() -> None:
                 persist_event_log_delta()
 
                 for ev in new_events:
-                    record_history(ev)
                     evt = ev.get("event")
                     if evt == "BUY":
                         quote_amt = float(ev.get("amt_q", 0.0))
                         logging.info("BUY ladder fill at %.4f for quote %.2f", ev.get("price"), quote_amt)
                         if client and quote_amt > 0:
                             try:
+                                available_quote = client.get_free_balance(pair_cfg.quote)
+                            except Exception as exc:  # pylint: disable=broad-except
+                                logging.warning("Unable to fetch %s balance: %s", pair_cfg.quote, exc)
+                                available_quote = None
+
+                            if available_quote is not None:
+                                cost_with_fees = quote_amt * (1 + state.fees_buy)
+                                if available_quote + 1e-12 < cost_with_fees:
+                                    if available_quote <= 0:
+                                        rollback_failed_buy(ev, ts, RuntimeError("Insufficient quote balance"))
+                                        record_history(ev)
+                                        continue
+                                    adjusted_quote = available_quote / (1 + state.fees_buy)
+                                    scale = max(min(adjusted_quote / quote_amt, 1.0), 0.0)
+                                    expected_qty = float(ev.get("q") or ev.get("qty") or 0.0)
+                                    adjusted_qty = expected_qty * scale
+                                    delta_qty = expected_qty - adjusted_qty
+                                    delta_cost = cost_with_fees - (adjusted_quote * (1 + state.fees_buy))
+                                    if delta_qty > 0:
+                                        state.Q = max(state.Q - delta_qty, 0.0)
+                                    if delta_cost > 0:
+                                        state.C = max(state.C - delta_cost, 0.0)
+                                    ev["q"] = adjusted_qty
+                                    ev["qty"] = adjusted_qty
+                                    ev["amt_q"] = adjusted_quote
+                                    quote_amt = adjusted_quote
+                                    logging.warning(
+                                        "Clamped buy quote from %.2f to %.2f due to available %s balance %.2f",
+                                        cost_with_fees,
+                                        quote_amt * (1 + state.fees_buy),
+                                        pair_cfg.quote,
+                                        available_quote,
+                                    )
+
+                            if quote_amt <= 0:
+                                rollback_failed_buy(ev, ts, RuntimeError("No purchasable quote after clamping"))
+                                record_history(ev)
+                                continue
+
+                            try:
                                 response = client.market_buy_quote(pair_cfg.symbol, quote_amt)
                             except requests.RequestException as exc:
                                 rollback_failed_buy(ev, ts, exc)
+                                record_history(ev)
                                 continue
                             logging.info("Order response: %s", json.dumps(response))
                             executed_qty = float(response.get("executedQty") or 0.0)
@@ -443,14 +488,17 @@ def main() -> None:
                                     net_qty,
                                     adjustment,
                                 )
-                    elif evt == "BTD_ORDER":
-                        logging.info(
-                            "BTD order suggested at %.4f for quote %.2f",
-                            ev.get("order_price"),
-                            ev.get("order_quote", 0.0),
-                        )
-                    elif evt == "SELL":
-                        logging.info("Strategy logged SELL event: %s", ev)
+                        record_history(ev)
+                    else:
+                        record_history(ev)
+                        if evt == "BTD_ORDER":
+                            logging.info(
+                                "BTD order suggested at %.4f for quote %.2f",
+                                ev.get("order_price"),
+                                ev.get("order_quote", 0.0),
+                            )
+                        elif evt == "SELL":
+                            logging.info("Strategy logged SELL event: %s", ev)
 
                 if res is not None:
                     qty = float(res.get("qty") or 0.0)
@@ -462,6 +510,7 @@ def main() -> None:
                         sell_qty,
                         res.get("pnl", 0.0),
                     )
+                    realized_pnl = float(res.get("pnl") or 0.0)
                     if client and sell_qty > 0:
                         if base_asset:
                             try:
@@ -476,9 +525,25 @@ def main() -> None:
                             except Exception as exc:
                                 logging.warning("Unable to fetch %s balance: %s", base_asset, exc)
                         if sell_qty > 0:
-                            response = client.market_sell(pair_cfg.symbol, sell_qty)
-                            logging.info("Sell response: %s", json.dumps(response))
-                    realized_pnl = float(res.get("pnl") or 0.0)
+                            chunk_count = sell_chunks if (sell_chunks > 1 and (realized_pnl > 0 or not sell_profit_only)) else 1
+                            chunk_count = max(chunk_count, 1)
+                            chunk_size = sell_qty / chunk_count
+                            sold_total = 0.0
+                            for idx in range(chunk_count):
+                                qty_chunk = chunk_size if idx < chunk_count - 1 else sell_qty - sold_total
+                                if qty_chunk <= 0:
+                                    continue
+                                response = client.market_sell(pair_cfg.symbol, qty_chunk)
+                                sold_total += qty_chunk
+                                logging.info(
+                                    "Sell response (%s/%s): %s",
+                                    idx + 1,
+                                    chunk_count,
+                                    json.dumps(response),
+                                )
+                                if sell_chunk_delay > 0 and idx < chunk_count - 1:
+                                    time.sleep(sell_chunk_delay)
+                            sell_qty = sold_total
                     if qty > 0 and sell_qty != qty:
                         realized_pnl *= sell_qty / qty
                     realized_pnl_total += realized_pnl
