@@ -1,0 +1,29 @@
+pairs:
+  - symbol: ZECUSDT
+    quote: USDT
+    b_alloc: 300
+    interval: 1m
+    lookback_days: 2
+    fees: { taker: 0.001, maker: 0.001 }
+    buy_ladder: { d_buy: 0.03, m_buy: 1.5, n_steps: 3 }
+    profit_trail: { p_min: 0.02, s1: 0.01, m_step: 1.6, tau: 0.7, p_lock_base: 0.005, p_lock_max: 0.02, tau_min: 0.3, no_loss_epsilon: 0.0005 }
+    time_martingale: { W1_minutes: 5, m_time: 2.0, delta_lock: 0.002, beta_tau: 0.9 }
+    time_caps: { T_idle_max_minutes: 45, p_idle: 0.004, T_total_cap_minutes: 180, p_exit_min: 0.004 }
+    features: { scalp_mode: { enabled: true, max_trades: 3, base_drop_pct: 0.03, min_drop_pct: 0.02, max_drop_pct: 0.06, base_take_profit_pct: 0.01, min_take_profit_pct: 0.008, max_take_profit_pct: 0.02, volatility_ref_pct: 0.04, scale_strength: 0.6, order_pct_allocation: 0.33 }, adaptive_ladder: { enabled: true, bootstrap_d_buy: 0.03, bootstrap_steps: 3, min_d_buy: 0.02, max_d_buy: 0.08, volatility_window: 120, sensitivity: 0.6, rebalance_threshold: 0.001 } }
+  - symbol: DCRUSDT
+    quote: USDT
+    b_alloc: 300
+    interval: 1m
+    lookback_days: 2
+    fees: { taker: 0.001, maker: 0.001 }
+    buy_ladder: { d_buy: 0.03, m_buy: 1.5, n_steps: 3 }
+    profit_trail: { p_min: 0.02, s1: 0.01, m_step: 1.6, tau: 0.7, p_lock_base: 0.005, p_lock_max: 0.02, tau_min: 0.3, no_loss_epsilon: 0.0005 }
+    time_martingale: { W1_minutes: 5, m_time: 2.0, delta_lock: 0.002, beta_tau: 0.9 }
+    time_caps: { T_idle_max_minutes: 45, p_idle: 0.004, T_total_cap_minutes: 180, p_exit_min: 0.004 }
+    features: { scalp_mode: { enabled: true, max_trades: 3, base_drop_pct: 0.03, min_drop_pct: 0.02, max_drop_pct: 0.06, base_take_profit_pct: 0.01, min_take_profit_pct: 0.008, max_take_profit_pct: 0.02, volatility_ref_pct: 0.04, scale_strength: 0.6, order_pct_allocation: 0.33 }, adaptive_ladder: { enabled: true, bootstrap_d_buy: 0.03, bootstrap_steps: 3, min_d_buy: 0.02, max_d_buy: 0.08, volatility_window: 120, sensitivity: 0.6, rebalance_threshold: 0.001 } }
+general:
+  snapshot_every_bars: 1
+  use_maker: true
+  sell_scale_out: { chunks: 2, delay_seconds: 1, profit_only: true }
+  binance: { base_url: "https://api.binance.com", retry: { attempts: 4, backoff_sec: 0.5 }, save_csv: true, data_dir: "data" }
+api: { key: ${BINANCE_API_KEY}, secret: ${BINANCE_API_SECRET} }
