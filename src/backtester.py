@@ -8,6 +8,7 @@ from .strategy import (
     StrategyState,
     BuyLadderConf,
     AdaptiveLadderConf,
+    AnchorDriftConf,
     ProfitTrailConf,
     TimeMartingaleConf,
     TimeCapsConf,
@@ -54,6 +55,7 @@ class PairConfig:
     sah: Dict[str, Any]
     scalp: Dict[str, Any]
     adaptive_ladder: Dict[str, Any]
+    anchor_drift: Dict[str, Any]
 
 def init_state_from_config(cfg: PairConfig):
     fees = cfg.fees_maker if cfg.use_maker else cfg.fees_taker
@@ -70,6 +72,7 @@ def init_state_from_config(cfg: PairConfig):
                            scalp=ScalpModeConf(**cfg.scalp),
         btd=BuyTheDipConf(**cfg.btd), sah=SellAtHeightConf(**cfg.sah),
         adaptive=AdaptiveLadderConf(**cfg.adaptive_ladder),
+        anchor=AnchorDriftConf(**cfg.anchor_drift),
         snapshot_every_bars=cfg.snapshot_every_bars, use_maker=cfg.use_maker
     )
 

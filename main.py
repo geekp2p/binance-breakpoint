@@ -42,6 +42,7 @@ def run(cfg_path, out_dir):
             sah=pc.get("features",{}).get("sell_at_height", {"enabled": False}),
             scalp=pc.get("features",{}).get("scalp_mode", {"enabled": False}),
             adaptive_ladder=pc.get("features",{}).get("adaptive_ladder", {"enabled": False}),
+            anchor_drift=pc.get("features",{}).get("anchor_drift", {"enabled": False}),
         )
         df = load_data_for_pair(paircfg, general, api)
         res = run_backtest_for_pair(df, paircfg)

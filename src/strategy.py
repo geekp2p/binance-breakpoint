@@ -25,7 +25,19 @@ class AdaptiveLadderConf:
     max_d_buy: float = 0.08
     volatility_window: int = 120
     sensitivity: float = 0.6
-    rebalance_threshold: float = 0.001    
+    rebalance_threshold: float = 0.001
+
+@dataclass
+class AnchorDriftConf:
+    enabled: bool = False
+    structure_window: int = 40
+    atr_period: int = 14
+    breakout_atr_multiplier: float = 1.2
+    stable_band_pct: float = 0.01
+    dwell_bars: int = 15
+    min_displacement_atr: float = 0.5
+    min_displacement_pct: float = 0.005
+    cooldown_bars: int = 20        
 
 @dataclass
 class ProfitTrailConf:
@@ -103,6 +115,7 @@ class StrategyState:
     b_alloc: float
     buy: BuyLadderConf
     adaptive: AdaptiveLadderConf
+    anchor: AnchorDriftConf    
     trail: ProfitTrailConf
     tmart: TimeMartingaleConf
     tcaps: TimeCapsConf
@@ -154,6 +167,13 @@ class StrategyState:
     sah_last_arm_ts: Optional[pd.Timestamp] = None
     sah_cooldown_until: Optional[pd.Timestamp] = None
 
+    # Anchor drift detection state
+    anchor_window: List[Dict[str, float]] = field(default_factory=list)
+    anchor_last_move_ts: Optional[pd.Timestamp] = None
+    anchor_last_move_bar: int = 0
+    anchor_base_price: Optional[float] = None
+    bar_index: int = 0    
+
     def _remaining_quote_allocation(self) -> float:
         spent = sum(self.ladder_amounts_quote[:self.ladder_next_idx]) + self._scalp_committed_quote()
         remaining = max(self.b_alloc - spent, 0.0)
@@ -179,6 +199,7 @@ class StrategyState:
         self.ladder_amounts_quote = amounts
         self.ladder_prices = compute_ladder_prices(base_price, self.current_d_buy, steps)
         self.ladder_next_idx = min(prev_idx, steps)
+        self.anchor_base_price = base_price
         if log_events is not None and ts is not None:
             log_events.append({
                 "ts": ts,
@@ -196,6 +217,100 @@ class StrategyState:
         self.volatility_samples.append(sample)
         if len(self.volatility_samples) > window:
             self.volatility_samples = self.volatility_samples[-window:]
+
+    def _max_anchor_window(self) -> int:
+        return max(
+            self.anchor.structure_window + self.anchor.dwell_bars + 5,
+            self.anchor.atr_period * 3,
+        )
+
+    def _update_anchor_window(self, h: float, l: float, c: float):
+        prev_close = self.anchor_window[-1]["close"] if self.anchor_window else c
+        tr = max(h - l, abs(h - prev_close), abs(l - prev_close))
+        self.anchor_window.append({"high": h, "low": l, "close": c, "tr": tr})
+        max_len = self._max_anchor_window()
+        if len(self.anchor_window) > max_len:
+            self.anchor_window = self.anchor_window[-max_len:]
+
+    def _anchor_atr(self) -> float:
+        period = max(1, int(self.anchor.atr_period))
+        if len(self.anchor_window) < period:
+            return 0.0
+        recent = self.anchor_window[-period:]
+        tr_sum = sum(bar["tr"] for bar in recent)
+        return tr_sum / period if period > 0 else 0.0
+
+    def _stable_zone_midpoint(self) -> Optional[float]:
+        if not self.anchor.enabled:
+            return None
+        dwell = max(1, int(self.anchor.dwell_bars))
+        structure = max(self.anchor.structure_window, dwell + 1)
+        if len(self.anchor_window) < structure + dwell:
+            return None
+        stable_slice = self.anchor_window[-dwell:]
+        prior_slice = self.anchor_window[-(structure + dwell):-dwell]
+        if not prior_slice:
+            return None
+        stable_high = max(bar["high"] for bar in stable_slice)
+        stable_low = min(bar["low"] for bar in stable_slice)
+        mid = (stable_high + stable_low) / 2 if stable_high + stable_low != 0 else None
+        if mid is None or mid <= 0:
+            return None
+        band_width = stable_high - stable_low
+        mid_ref = mid if mid != 0 else 1.0
+        if band_width / mid_ref > self.anchor.stable_band_pct * 2:
+            return None
+        atr = self._anchor_atr()
+        breakout = max(bar["close"] for bar in stable_slice) - max(bar["high"] for bar in prior_slice)
+        if atr <= 0 or breakout < atr * self.anchor.breakout_atr_multiplier:
+            return None
+        current_anchor = self.anchor_base_price or self.P0 or mid
+        displacement = abs(mid - current_anchor)
+        min_disp = max(
+            self.anchor.min_displacement_atr * atr,
+            (self.anchor.min_displacement_pct * current_anchor) if current_anchor else 0.0,
+        )
+        if displacement < min_disp:
+            return None
+        return mid
+
+    def _maybe_shift_anchor(self, ts, c: float, log_events: List[Dict[str, Any]]):
+        if not self.anchor.enabled:
+            return
+        if self.bar_index - self.anchor_last_move_bar < max(1, int(self.anchor.cooldown_bars)):
+            return
+        mid = self._stable_zone_midpoint()
+        if mid is None or mid <= 0:
+            return
+        if self.Q > 0:
+            P_BE = self.P_BE()
+            if P_BE is None or P_BE <= 0:
+                return
+            proposed_next_buy = mid * (1 - self.current_d_buy)
+            safe_exit = P_BE * (1 + self.trail.no_loss_epsilon)
+            if proposed_next_buy > safe_exit:
+                log_events.append({
+                    "ts": ts,
+                    "event": "ANCHOR_REJECTED",
+                    "reason": "WOULD_BUY_ABOVE_BE",
+                    "proposed_next_buy": proposed_next_buy,
+                    "P_BE": P_BE,
+                })
+                return
+        prev_anchor = self.anchor_base_price
+        self.rebuild_ladder(mid, ts, log_events, reason="ANCHOR_SHIFT", preserve_progress=self.Q > 0)
+        self.anchor_last_move_ts = ts
+        self.anchor_last_move_bar = self.bar_index
+        if self.P0 is None:
+            self.P0 = mid
+        log_events.append({
+            "ts": ts,
+            "event": "ANCHOR_SHIFTED",
+            "anchor": mid,
+            "prev_anchor": prev_anchor,
+            "bar_index": self.bar_index,
+            "preserve_progress": self.Q > 0,
+        })
 
     def _maybe_update_adaptive_spacing(self, ts, c, h, l, log_events: List[Dict[str, Any]]):
         if not self.adaptive.enabled:
@@ -442,12 +557,14 @@ class StrategyState:
         })
 
     def on_bar(self, ts, o, h, l, c, volume, log_events:List[Dict[str,Any]]):
+        self.bar_index += 1
         if self.P0 is None:
             self.P0 = o
             self.round_start_ts = ts
             self.scalp_anchor_price = o
 
         self._update_session_range(h, l)
+        self._update_anchor_window(h, l, c)
 
         # --- scalp take-profit first (protect fast exits) ---
         self._check_scalp_take_profit(ts, h, log_events)
@@ -456,6 +573,8 @@ class StrategyState:
         self._maybe_scalp_buy(ts, o, h, l, log_events)
         # --- adapt ladder spacing before consuming quote ---
         self._maybe_update_adaptive_spacing(ts, c, h, l, log_events)
+        # --- dynamic anchor repositioning ---
+        self._maybe_shift_anchor(ts, c, log_events)        
 
         # --- Arm BTD/SAH (scaffold only; no auto-action) ---
         ev = self._maybe_arm_btd(ts, l)

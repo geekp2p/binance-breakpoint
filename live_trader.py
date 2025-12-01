@@ -64,6 +64,7 @@ def build_pair_config(raw: Dict, general: Dict) -> PairConfig:
         btd=raw.get("features", {}).get("buy_the_dip", {"enabled": False}),
         sah=raw.get("features", {}).get("sell_at_height", {"enabled": False}),
         adaptive_ladder=raw.get("features", {}).get("adaptive_ladder", {"enabled": False}),
+        anchor_drift=raw.get("features", {}).get("anchor_drift", {"enabled": False}),
     )
 
 

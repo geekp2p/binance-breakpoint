@@ -110,6 +110,11 @@ def state_to_payload(state: StrategyState) -> Dict[str, Any]:
         "sah_last_top": state.sah_last_top,
         "sah_last_arm_ts": _to_iso(state.sah_last_arm_ts),
         "sah_cooldown_until": _to_iso(state.sah_cooldown_until),
+        "anchor_window": list(state.anchor_window),
+        "anchor_last_move_ts": _to_iso(state.anchor_last_move_ts),
+        "anchor_last_move_bar": state.anchor_last_move_bar,
+        "anchor_base_price": state.anchor_base_price,
+        "bar_index": state.bar_index,
     }
 
 
@@ -149,6 +154,11 @@ def apply_payload_to_state(state: StrategyState, payload: Dict[str, Any]) -> Non
     state.sah_last_top = payload.get("sah_last_top", state.sah_last_top)
     state.sah_last_arm_ts = _from_iso(payload.get("sah_last_arm_ts")) or state.sah_last_arm_ts
     state.sah_cooldown_until = _from_iso(payload.get("sah_cooldown_until")) or state.sah_cooldown_until
+    state.anchor_window = list(payload.get("anchor_window", state.anchor_window))
+    state.anchor_last_move_ts = _from_iso(payload.get("anchor_last_move_ts")) or state.anchor_last_move_ts
+    state.anchor_last_move_bar = int(payload.get("anchor_last_move_bar", state.anchor_last_move_bar))
+    state.anchor_base_price = payload.get("anchor_base_price", state.anchor_base_price)
+    state.bar_index = int(payload.get("bar_index", state.bar_index))
 
 
 def load_savepoint(directory: Path, symbol: str) -> Optional[Dict[str, Any]]:

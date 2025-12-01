@@ -85,6 +85,16 @@ pairs:
         volatility_window: 120      # ใช้ค่า range ล่าสุด 120 แท่ง (2 ชม. ที่ TF 1m)
         sensitivity: 0.6            # factor แปลงความผันผวนเป็น d_buy
         rebalance_threshold: 0.001  # ขยับ ladder เมื่อ d_buy เปลี่ยนเกิน 0.1%
+      anchor_drift:
+        enabled: true
+        structure_window: 40        # ใช้กรอบโครงสร้างย้อนหลัง (แท่ง)
+        atr_period: 14             # คำนวณ ATR สำหรับวัด breakout/min displacement
+        breakout_atr_multiplier: 1.2 # ต้องทะลุ high เดิมมากกว่า ATR*x จึงพิจารณา
+        stable_band_pct: 0.01       # ช่วง sideway แคบแค่ไหน (±1%)
+        dwell_bars: 15              # ต้องนิ่งกี่แท่งถึงนับว่า stable zone
+        min_displacement_atr: 0.5   # ขยับ anchor อย่างน้อย 0.5 ATR
+        min_displacement_pct: 0.005 # หรือไม่น้อยกว่า 0.5% ของ anchor เดิม
+        cooldown_bars: 20           # เวลาพักระหว่างการขยับ
     plotting: { enable: true }
 
   - symbol: DCRUSDT
@@ -167,6 +177,16 @@ pairs:
         volatility_window: 120      # ใช้ค่า range ล่าสุด 120 แท่ง (2 ชม. ที่ TF 1m)
         sensitivity: 0.6            # factor แปลงความผันผวนเป็น d_buy
         rebalance_threshold: 0.001  # ขยับ ladder เมื่อ d_buy เปลี่ยนเกิน 0.1%
+      anchor_drift:
+        enabled: true
+        structure_window: 40        # ใช้กรอบโครงสร้างย้อนหลัง (แท่ง)
+        atr_period: 14             # คำนวณ ATR สำหรับวัด breakout/min displacement
+        breakout_atr_multiplier: 1.2 # ต้องทะลุ high เดิมมากกว่า ATR*x จึงพิจารณา
+        stable_band_pct: 0.01       # ช่วง sideway แคบแค่ไหน (±1%)
+        dwell_bars: 15              # ต้องนิ่งกี่แท่งถึงนับว่า stable zone
+        min_displacement_atr: 0.5   # ขยับ anchor อย่างน้อย 0.5 ATR
+        min_displacement_pct: 0.005 # หรือไม่น้อยกว่า 0.5% ของ anchor เดิม
+        cooldown_bars: 20           # เวลาพักระหว่างการขยับ
     plotting: { enable: true }
 
 general:
