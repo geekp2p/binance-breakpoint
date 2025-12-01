@@ -302,6 +302,53 @@ def main() -> None:
             _persist_records(delta, activity_jsonl, activity_csv)
             activity_persist_count = len(activity_history)
 
+        def clamp_buy_to_available(
+            ev: Dict[str, object],
+            available_quote: Optional[float],
+            ts: datetime,
+            context: str,
+        ) -> tuple[float, bool]:
+            quote_amt = float(ev.get("amt_q", 0.0))
+            if available_quote is None:
+                return quote_amt, False
+
+            cost_with_fees = quote_amt * (1 + state.fees_buy)
+            if available_quote + 1e-12 >= cost_with_fees:
+                return quote_amt, False
+
+            if available_quote <= 0:
+                rollback_failed_buy(ev, ts, RuntimeError("Insufficient quote balance"))
+                record_history(ev)
+                return 0.0, True
+
+            adjusted_quote = available_quote / (1 + state.fees_buy)
+            expected_qty = float(ev.get("q") or ev.get("qty") or 0.0)
+            if quote_amt <= 0 or expected_qty <= 0:
+                rollback_failed_buy(ev, ts, RuntimeError("Invalid buy sizing after clamping"))
+                record_history(ev)
+                return 0.0, True
+
+            scale = max(min(adjusted_quote / quote_amt, 1.0), 0.0)
+            adjusted_qty = expected_qty * scale
+            delta_qty = expected_qty - adjusted_qty
+            delta_cost = cost_with_fees - (adjusted_quote * (1 + state.fees_buy))
+            if delta_qty > 0:
+                state.Q = max(state.Q - delta_qty, 0.0)
+            if delta_cost > 0:
+                state.C = max(state.C - delta_cost, 0.0)
+            ev["q"] = adjusted_qty
+            ev["qty"] = adjusted_qty
+            ev["amt_q"] = adjusted_quote
+            logging.warning(
+                "Clamped buy quote from %.2f to %.2f (%s) due to available %s balance %.2f",
+                cost_with_fees,
+                adjusted_quote * (1 + state.fees_buy),
+                context,
+                pair_cfg.quote,
+                available_quote,
+            )
+            return adjusted_quote, False
+
         def rollback_failed_buy(ev: Dict[str, object], ts: datetime, exc: Exception) -> None:
             qty = float(ev.get("q") or ev.get("qty") or 0.0)
             quote_amt = float(ev.get("amt_q") or 0.0)
@@ -427,34 +474,27 @@ def main() -> None:
                                 logging.warning("Unable to fetch %s balance: %s", pair_cfg.quote, exc)
                                 available_quote = None
 
-                            if available_quote is not None:
-                                cost_with_fees = quote_amt * (1 + state.fees_buy)
-                                if available_quote + 1e-12 < cost_with_fees:
-                                    if available_quote <= 0:
-                                        rollback_failed_buy(ev, ts, RuntimeError("Insufficient quote balance"))
-                                        record_history(ev)
-                                        continue
-                                    adjusted_quote = available_quote / (1 + state.fees_buy)
-                                    scale = max(min(adjusted_quote / quote_amt, 1.0), 0.0)
-                                    expected_qty = float(ev.get("q") or ev.get("qty") or 0.0)
-                                    adjusted_qty = expected_qty * scale
-                                    delta_qty = expected_qty - adjusted_qty
-                                    delta_cost = cost_with_fees - (adjusted_quote * (1 + state.fees_buy))
-                                    if delta_qty > 0:
-                                        state.Q = max(state.Q - delta_qty, 0.0)
-                                    if delta_cost > 0:
-                                        state.C = max(state.C - delta_cost, 0.0)
-                                    ev["q"] = adjusted_qty
-                                    ev["qty"] = adjusted_qty
-                                    ev["amt_q"] = adjusted_quote
-                                    quote_amt = adjusted_quote
-                                    logging.warning(
-                                        "Clamped buy quote from %.2f to %.2f due to available %s balance %.2f",
-                                        cost_with_fees,
-                                        quote_amt * (1 + state.fees_buy),
-                                        pair_cfg.quote,
-                                        available_quote,
-                                    )
+                            quote_amt, aborted = clamp_buy_to_available(
+                                ev, available_quote, ts, "initial check"
+                            )
+                            if aborted:
+                                continue
+
+                            try:
+                                refreshed_available = client.get_free_balance(pair_cfg.quote)
+                            except Exception as exc:  # pylint: disable=broad-except
+                                logging.warning(
+                                    "Unable to refresh %s balance before buy: %s",
+                                    pair_cfg.quote,
+                                    exc,
+                                )
+                                refreshed_available = None
+
+                            quote_amt, aborted = clamp_buy_to_available(
+                                ev, refreshed_available, ts, "pre-submit refresh"
+                            )
+                            if aborted:
+                                continue
 
                             if quote_amt <= 0:
                                 rollback_failed_buy(ev, ts, RuntimeError("No purchasable quote after clamping"))
