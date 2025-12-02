@@ -356,8 +356,10 @@ def main() -> None:
                 state.Q = max(state.Q - qty, 0.0)
             if quote_amt > 0:
                 state.C = max(state.C - quote_amt * (1 + state.fees_buy), 0.0)
-            if state.ladder_next_idx > 0:
+            if ev.get("event") == "BUY" and state.ladder_next_idx > 0:
                 state.ladder_next_idx -= 1
+            if ev.get("event") == "BTD_ORDER" and state.btd_orders_done > 0:
+                state.btd_orders_done -= 1
             logging.error(
                 "Market buy failed; rolled back expected position (qty %.8f, quote %.8f): %s",
                 qty,
@@ -371,6 +373,29 @@ def main() -> None:
                     "reason": str(exc),
                     "qty": qty,
                     "quote": quote_amt,
+                }
+            )
+
+        def rollback_failed_sah(ev: Dict[str, object], ts: datetime, exc: Exception) -> None:
+            qty = float(ev.get("qty") or ev.get("order_qty") or 0.0)
+            cost_share = float(ev.get("cost_share") or 0.0)
+            if qty > 0:
+                state.Q += qty
+            if cost_share > 0:
+                state.C += cost_share
+            logging.error(
+                "SAH sell failed; restored qty %.8f (cost share %.8f): %s",
+                qty,
+                cost_share,
+                exc,
+            )
+            record_history(
+                {
+                    "ts": ts,
+                    "event": "SAH_FAILED",
+                    "reason": str(exc),
+                    "qty": qty,
+                    "cost_share": cost_share,
                 }
             )
 
