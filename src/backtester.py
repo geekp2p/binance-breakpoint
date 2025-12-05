@@ -33,9 +33,6 @@ class PairConfig:
     buy_d: float
     buy_m: float
     buy_n: int
-    buy_spacing: str = "geometric"
-    buy_multipliers: Any = None
-    buy_max_drop: float = 0.25    
     p_min: float
     s1: float
     m_step: float
@@ -59,6 +56,9 @@ class PairConfig:
     scalp: Dict[str, Any]
     adaptive_ladder: Dict[str, Any]
     anchor_drift: Dict[str, Any]
+    buy_spacing: str = "geometric"
+    buy_multipliers: Any = None
+    buy_max_drop: float = 0.25
 
 def init_state_from_config(cfg: PairConfig):
     fees = cfg.fees_maker if cfg.use_maker else cfg.fees_taker
