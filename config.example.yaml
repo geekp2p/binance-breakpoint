@@ -1,19 +1,21 @@
 
 api:
-  # ดึงจาก env เพื่อความปลอดภัย (ยังไม่ใช้กับ klines public)
   key: ${BINANCE_API_KEY}
   secret: ${BINANCE_API_SECRET}
 
 pairs:
   - symbol: ZECUSDT
     quote: USDT
-    b_alloc: 300.0
+    b_alloc: 6666.0
     source: binance
     interval: 1m
     lookback_days: 2
     fees: { taker: 0.001, maker: 0.001 }
 
-    buy_ladder: { d_buy: 0.03, m_buy: 1.5, n_steps: 3 }
+    # - d_buy: ระยะห่างเริ่มต้นของขั้นแรก (ใช้ร่วมกับ spacing_mode)
+    # - spacing_mode: "fibo" = เว้นช่วงลึกขึ้นตาม Fibonacci, "geometric" = คงที่
+    # - n_steps: จำนวนขั้นสูงสุดในรอบสะสมหลัก (ตั้ง 10 ให้ลงลึกแบบ fibo)
+    buy_ladder: { d_buy: 0.015, m_buy: 1.5, n_steps: 10, spacing_mode: fibo, max_step_drop: 0.25 }
 
     profit_trail:
       p_min: 0.02
@@ -23,7 +25,6 @@ pairs:
       p_lock_base: 0.005
       p_lock_max: 0.02
       tau_min: 0.3
-      # ไม่ขายขาดทุน: ส่วนเผื่อขั้นต่ำให้เหนือ BE เสมอ
       no_loss_epsilon: 0.0005
 
     time_martingale:
@@ -38,74 +39,81 @@ pairs:
       T_total_cap_minutes: 180
       p_exit_min: 0.004
 
-    # --- Feature scaffolds (ปิดไว้) ---
     features:
       scalp_mode:
         enabled: true
-        max_trades: 3            # จำกัดไม้สั้น ๆ 3 ไม้แรกตามที่ต้องการ
-        base_drop_pct: 0.03      # ค่าเริ่มต้น เมื่อสวิงไม่มาก
-        min_drop_pct: 0.02       # ปรับลดลงได้ถ้าวันนั้นนิ่งมาก
-        max_drop_pct: 0.06       # ถ้าแกว่งแรงจะ scale ขึ้นจนถึงค่านี้
+        # scalp_mode = เข้าเร็ว–ออกเร็ว แยกจากบันไดหลัก
+        # max_trades = จำนวนไม้ scalp ต่อรอบ (ตั้ง 10 เพื่อเกิน 3 ไม้เดิม)
+        max_trades: 10
+        base_drop_pct: 0.03
+        min_drop_pct: 0.02
+        max_drop_pct: 0.06
         base_take_profit_pct: 0.01
         min_take_profit_pct: 0.008
         max_take_profit_pct: 0.02
-        volatility_ref_pct: 0.04 # ใช้ high-low ระหว่างรอบเปรียบเทียบเพื่อ scale % ให้สูง/ต่ำ
-        scale_strength: 0.6      # ยอมเพิ่ม/ลดตาม range ที่วัดได้มากน้อยแค่ไหน
-        order_pct_allocation: 0.33  # ดึงทุนต่อไม้ (คิดจาก b_alloc) เพื่อทำ scalp
+        volatility_ref_pct: 0.04
+        scale_strength: 0.6
+        order_pct_allocation: 0.33
       buy_the_dip:
-        enabled: false
-        dip_threshold: 0.05        # ต่ำกว่า "บันไดล่าสุด" อีกกี่ % ถึงนับว่า overshoot
-        rebound_min: 0.004         # เด้งจาก bottom ขั้นต่ำกี่ % ถึงยืนยัน rebound
-        rebound_max: 0.02          # เด้งไม่เกินกี่ % เพื่อ "ไม่ซื้อแพง"
-        cooldown_minutes: 10       # เวลารอก่อนพิจารณาซ้ำ
-        max_orders: 7              # เปิดช่อง BTD แยกไว้ 7 ไม้
-        rebase_ladder_from_dip: true   # ปรับ P0/บันไดใหม่จากจุด dip
-        rebase_offset: 0.0              # ตั้งบันไดจาก bottom*(1+offset)
-        order_quote: 0.0                # ตั้ง notional เฉพาะกิจ (0=ไม่ใช้)
-        order_pct_remaining: 0.5        # หรือสัดส่วน quote ที่เหลือ (0-1)
-        limit_offset: 0.001             # ตั้ง limit เหนือ bottom เล็กน้อย (0=ตรง bottom)
-        cancel_on_miss: true            # ถ้าราคาเด้งเกิน rebound_max ให้ยกเลิกสัญญาณ
-        isolate_from_ladder: true       # ซื้อ dip แยกจากบันไดหลัก ไม่ปรับบันได gap
-      sell_at_height:
-        enabled: false
-        height_threshold: 0.04     # สูงกว่า H ล่าสุดกี่ % ถึงนับว่า over-extended
-        pullback_min: 0.004        # ย่อจากยอดขั้นต่ำเพื่อยืนยันการถอย
-        pullback_max: 0.02         # ไม่ขายถ้าย่อแรงเกิน risk control (รอ tighten)
+        # เปิดซื้อดักหลุดบันได (dip) แยกจาก n_steps หลัก
+        enabled: true
+        dip_threshold: 0.05
+        rebound_min: 0.004
+        rebound_max: 0.02
         cooldown_minutes: 10
-        order_pct_position: 0.5    # สัดส่วนของ Q ที่พร้อมตั้งขาย (0-1)
-        limit_offset: 0.001        # ตั้ง limit ต่ำกว่ายอดเล็กน้อย (0=ตรงยอด)
-        min_qty: 0.0               # ขั้นต่ำของจำนวนที่จะตั้งขาย (0=ไม่กำหนด)
-        cancel_on_miss: true       # ถ้าย่อลึกเกิน pullback_max → ยกเลิก
+        max_orders: 7
+        rebase_ladder_from_dip: true
+        rebase_offset: 0.0
+        order_quote: 0.0
+        order_pct_remaining: 0.5
+        limit_offset: 0.001
+        cancel_on_miss: true
+        isolate_from_ladder: true
+      sell_at_height:
+        # เปิดขายบนยอด (rip) เมื่อราคายืดเกิน threshold แล้วดึงกลับ
+        enabled: true
+        height_threshold: 0.04
+        pullback_min: 0.004
+        pullback_max: 0.02
+        cooldown_minutes: 10
+        order_pct_position: 0.5
+        limit_offset: 0.001
+        min_qty: 0.0
+        cancel_on_miss: true
       adaptive_ladder:
         enabled: true
-        bootstrap_d_buy: 0.03       # เริ่มต้นใช้ระยะห่าง 3%
-        bootstrap_steps: 3          # จำกัดลึกสุด 3 ไม้ในช่วงสังเกตการณ์
-        min_d_buy: 0.02             # ระยะห่างต่ำสุดเมื่อความถี่สูงมาก
-        max_d_buy: 0.08             # ระยะห่างสูงสุดเมื่อสวิงแรง
-        volatility_window: 120      # ใช้ค่า range ล่าสุด 120 แท่ง (2 ชม. ที่ TF 1m)
-        sensitivity: 0.6            # factor แปลงความผันผวนเป็น d_buy
-        rebalance_threshold: 0.001  # ขยับ ladder เมื่อ d_buy เปลี่ยนเกิน 0.1%
+        bootstrap_d_buy: 0.03
+        # จำกัดจำนวนขั้นช่วงสังเกตการณ์ก่อนคำนวณ d_buy ใหม่อัตโนมัติ
+        bootstrap_steps: 3
+        min_d_buy: 0.02
+        max_d_buy: 0.08
+        volatility_window: 120
+        sensitivity: 0.6
+        rebalance_threshold: 0.001
       anchor_drift:
         enabled: true
-        structure_window: 40        # ใช้กรอบโครงสร้างย้อนหลัง (แท่ง)
-        atr_period: 14             # คำนวณ ATR สำหรับวัด breakout/min displacement
-        breakout_atr_multiplier: 1.2 # ต้องทะลุ high เดิมมากกว่า ATR*x จึงพิจารณา
-        stable_band_pct: 0.01       # ช่วง sideway แคบแค่ไหน (±1%)
-        dwell_bars: 15              # ต้องนิ่งกี่แท่งถึงนับว่า stable zone
-        min_displacement_atr: 0.5   # ขยับ anchor อย่างน้อย 0.5 ATR
-        min_displacement_pct: 0.005 # หรือไม่น้อยกว่า 0.5% ของ anchor เดิม
-        cooldown_bars: 20           # เวลาพักระหว่างการขยับ
+        structure_window: 40
+        atr_period: 14
+        breakout_atr_multiplier: 1.2
+        stable_band_pct: 0.01
+        dwell_bars: 15
+        min_displacement_atr: 0.5
+        min_displacement_pct: 0.005
+        cooldown_bars: 20
     plotting: { enable: true }
 
   - symbol: DCRUSDT
     quote: USDT
-    b_alloc: 300.0
+    b_alloc: 6666.0
     source: binance
     interval: 1m
     lookback_days: 2
     fees: { taker: 0.001, maker: 0.001 }
 
-    buy_ladder: { d_buy: 0.03, m_buy: 1.5, n_steps: 3 }
+    # - d_buy: ระยะห่างเริ่มต้นของขั้นแรก (ใช้ร่วมกับ spacing_mode)
+    # - spacing_mode: "fibo" = เว้นช่วงลึกขึ้นตาม Fibonacci, "geometric" = คงที่
+    # - n_steps: จำนวนขั้นสูงสุดในรอบสะสมหลัก (ตั้ง 10 ให้ลงลึกแบบ fibo)
+    buy_ladder: { d_buy: 0.015, m_buy: 1.5, n_steps: 10, spacing_mode: fibo, max_step_drop: 0.25 }
 
     profit_trail:
       p_min: 0.02
@@ -115,7 +123,6 @@ pairs:
       p_lock_base: 0.005
       p_lock_max: 0.02
       tau_min: 0.3
-      # ไม่ขายขาดทุน: ส่วนเผื่อขั้นต่ำให้เหนือ BE เสมอ
       no_loss_epsilon: 0.0005
 
     time_martingale:
@@ -130,63 +137,67 @@ pairs:
       T_total_cap_minutes: 180
       p_exit_min: 0.004
 
-    # --- Feature scaffolds (ปิดไว้) ---
     features:
       scalp_mode:
         enabled: true
-        max_trades: 3            # จำกัดไม้สั้น ๆ 3 ไม้แรกตามที่ต้องการ
-        base_drop_pct: 0.03      # ค่าเริ่มต้น เมื่อสวิงไม่มาก
-        min_drop_pct: 0.02       # ปรับลดลงได้ถ้าวันนั้นนิ่งมาก
-        max_drop_pct: 0.06       # ถ้าแกว่งแรงจะ scale ขึ้นจนถึงค่านี้
+        # scalp_mode = เข้าเร็ว–ออกเร็ว แยกจากบันไดหลัก
+        # max_trades = จำนวนไม้ scalp ต่อรอบ (ตั้ง 10 เพื่อเกิน 3 ไม้เดิม)
+        max_trades: 10
+        base_drop_pct: 0.03
+        min_drop_pct: 0.02
+        max_drop_pct: 0.06
         base_take_profit_pct: 0.01
         min_take_profit_pct: 0.008
         max_take_profit_pct: 0.02
-        volatility_ref_pct: 0.04 # ใช้ high-low ระหว่างรอบเปรียบเทียบเพื่อ scale % ให้สูง/ต่ำ
-        scale_strength: 0.6      # ยอมเพิ่ม/ลดตาม range ที่วัดได้มากน้อยแค่ไหน
-        order_pct_allocation: 0.33  # ดึงทุนต่อไม้ (คิดจาก b_alloc) เพื่อทำ scalp
+        volatility_ref_pct: 0.04
+        scale_strength: 0.6
+        order_pct_allocation: 0.33
       buy_the_dip:
-        enabled: false
-        dip_threshold: 0.05        # ต่ำกว่า "บันไดล่าสุด" อีกกี่ % ถึงนับว่า overshoot
-        rebound_min: 0.004         # เด้งจาก bottom ขั้นต่ำกี่ % ถึงยืนยัน rebound
-        rebound_max: 0.02          # เด้งไม่เกินกี่ % เพื่อ "ไม่ซื้อแพง"
-        cooldown_minutes: 10       # เวลารอก่อนพิจารณาซ้ำ
-        max_orders: 7              # เปิดช่อง BTD แยกไว้ 7 ไม้
-        rebase_ladder_from_dip: true   # ปรับ P0/บันไดใหม่จากจุด dip
-        rebase_offset: 0.0              # ตั้งบันไดจาก bottom*(1+offset)
-        order_quote: 0.0                # ตั้ง notional เฉพาะกิจ (0=ไม่ใช้)
-        order_pct_remaining: 0.5        # หรือสัดส่วน quote ที่เหลือ (0-1)
-        limit_offset: 0.001             # ตั้ง limit เหนือ bottom เล็กน้อย (0=ตรง bottom)
-        cancel_on_miss: true            # ถ้าราคาเด้งเกิน rebound_max ให้ยกเลิกสัญญาณ
-        isolate_from_ladder: true       # ซื้อ dip แยกจากบันไดหลัก ไม่ปรับบันได gap
-      sell_at_height:
-        enabled: false
-        height_threshold: 0.04     # สูงกว่า H ล่าสุดกี่ % ถึงนับว่า over-extended
-        pullback_min: 0.004        # ย่อจากยอดขั้นต่ำเพื่อยืนยันการถอย
-        pullback_max: 0.02         # ไม่ขายถ้าย่อแรงเิน risk control (รอ tighten)
+        # เปิดซื้อดักหลุดบันได (dip) แยกจาก n_steps หลัก
+        enabled: true
+        dip_threshold: 0.05
+        rebound_min: 0.004
+        rebound_max: 0.02
         cooldown_minutes: 10
-        order_pct_position: 0.5    # สัดส่วนของ Q ที่พร้อมตั้งขาย (0-1)
-        limit_offset: 0.001        # ตั้ง limit ต่ำกว่ายอดเล็กน้อย (0=ตรงยอด)
-        min_qty: 0.0               # ขั้นต่ำของจำนวนที่จะตั้งขาย (0=ไม่กำหนด)
-        cancel_on_miss: true       # ถ้าย่อลึกเกิน pullback_max → ยกเลิก
+        max_orders: 7
+        rebase_ladder_from_dip: true
+        rebase_offset: 0.0
+        order_quote: 0.0
+        order_pct_remaining: 0.5
+        limit_offset: 0.001
+        cancel_on_miss: true
+        isolate_from_ladder: true
+      sell_at_height:
+        # เปิดขายบนยอด (rip) เมื่อราคายืดเกิน threshold แล้วดึงกลับ
+        enabled: true
+        height_threshold: 0.04
+        pullback_min: 0.004
+        pullback_max: 0.02
+        cooldown_minutes: 10
+        order_pct_position: 0.5
+        limit_offset: 0.001
+        min_qty: 0.0
+        cancel_on_miss: true
       adaptive_ladder:
         enabled: true
-        bootstrap_d_buy: 0.03       # เริ่มต้นใช้ระยะห่าง 3%
-        bootstrap_steps: 3          # จำกัดลึกสุด 3 ไม้ในช่วงสังเกตการณ์
-        min_d_buy: 0.02             # ระยะห่างต่ำสุดเมื่อความถี่สูงมาก
-        max_d_buy: 0.08             # ระยะห่างสูงสุดเมื่อสวิงแรง
-        volatility_window: 120      # ใช้ค่า range ล่าสุด 120 แท่ง (2 ชม. ที่ TF 1m)
-        sensitivity: 0.6            # factor แปลงความผันผวนเป็น d_buy
-        rebalance_threshold: 0.001  # ขยับ ladder เมื่อ d_buy เปลี่ยนเกิน 0.1%
+        bootstrap_d_buy: 0.03
+        # จำกัดจำนวนขั้นช่วงสังเกตการณ์ก่อนคำนวณ d_buy ใหม่อัตโนมัติ
+        bootstrap_steps: 3
+        min_d_buy: 0.02
+        max_d_buy: 0.08
+        volatility_window: 120
+        sensitivity: 0.6
+        rebalance_threshold: 0.001
       anchor_drift:
         enabled: true
-        structure_window: 40        # ใช้กรอบโครงสร้างย้อนหลัง (แท่ง)
-        atr_period: 14             # คำนวณ ATR สำหรับวัด breakout/min displacement
-        breakout_atr_multiplier: 1.2 # ต้องทะลุ high เดิมมากกว่า ATR*x จึงพิจารณา
-        stable_band_pct: 0.01       # ช่วง sideway แคบแค่ไหน (±1%)
-        dwell_bars: 15              # ต้องนิ่งกี่แท่งถึงนับว่า stable zone
-        min_displacement_atr: 0.5   # ขยับ anchor อย่างน้อย 0.5 ATR
-        min_displacement_pct: 0.005 # หรือไม่น้อยกว่า 0.5% ของ anchor เดิม
-        cooldown_bars: 20           # เวลาพักระหว่างการขยับ
+        structure_window: 40
+        atr_period: 14
+        breakout_atr_multiplier: 1.2
+        stable_band_pct: 0.01
+        dwell_bars: 15
+        min_displacement_atr: 0.5
+        min_displacement_pct: 0.005
+        cooldown_bars: 20
     plotting: { enable: true }
 
 general:
