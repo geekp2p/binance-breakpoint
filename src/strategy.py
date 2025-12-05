@@ -15,6 +15,9 @@ class BuyLadderConf:
     d_buy: float
     m_buy: float
     n_steps: int
+    spacing_mode: str = "geometric"
+    d_multipliers: Optional[list] = None
+    max_step_drop: float = 0.25    
 
 @dataclass
 class AdaptiveLadderConf:
@@ -180,6 +183,8 @@ class StrategyState:
         return remaining
     
     def _effective_n_steps(self) -> int:
+        if self.buy.d_multipliers:
+            return min(len(self.buy.d_multipliers), max(1, int(self.buy.n_steps)))
         if self.adaptive.enabled and not self.adaptive_ready:
             return max(1, int(self.adaptive.bootstrap_steps))
         return max(1, int(self.buy.n_steps))
@@ -197,7 +202,14 @@ class StrategyState:
         amounts = [a * (self.buy.m_buy ** i) for i in range(steps)]
         prev_idx = self.ladder_next_idx if preserve_progress else 0
         self.ladder_amounts_quote = amounts
-        self.ladder_prices = compute_ladder_prices(base_price, self.current_d_buy, steps)
+        self.ladder_prices = compute_ladder_prices(
+            base_price,
+            self.current_d_buy,
+            steps,
+            spacing_mode=self.buy.spacing_mode,
+            d_multipliers=self.buy.d_multipliers,
+            max_step_drop=self.buy.max_step_drop,
+        )
         self.ladder_next_idx = min(prev_idx, steps)
         self.anchor_base_price = base_price
         if log_events is not None and ts is not None:

@@ -1,0 +1,13 @@
+{
+  "symbol": "DEMOUSDT",
+  "quote": "USDT",
+  "b_alloc": 200.0,
+  "n_buys": 1,
+  "btd_orders": 0,
+  "scalp_buys": 0,
+  "scalp_tps": 0,
+  "sah_orders": 0,
+  "sell_reason": "TRAIL_PULLBACK",
+  "pnl": 0.6158662392889553,
+  "duration_minutes": 49.0
+}

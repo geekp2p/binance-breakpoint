@@ -58,7 +58,7 @@ def main(
         symbol=symbol, quote="USDT", b_alloc=200.0,
         source="binance", interval="1m", lookback_days=1, start="", end="",
         fees_taker=0.001, fees_maker=0.001,
-        buy_d=0.03, buy_m=1.5, buy_n=3,
+        buy_d=0.03, buy_m=1.5, buy_n=3, buy_spacing="geometric", buy_multipliers=None, buy_max_drop=0.25,
         p_min=0.02, s1=0.01, m_step=1.6, tau=0.7,
         p_lock_base=0.005, p_lock_max=0.02, tau_min=0.3, no_loss_epsilon=0.0005,
         W1_minutes=5, m_time=2.0, delta_lock=0.002, beta_tau=0.9,

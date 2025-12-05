@@ -12,11 +12,10 @@ pairs:
     lookback_days: 2
     fees: { taker: 0.001, maker: 0.001 }
 
-    # บันไดสะสมหลัก (Martingale)
-    # - d_buy: ระยะห่างแต่ละขั้น (เริ่ม 3%)
-    # - m_buy: ตัวคูณขนาดไม้เมื่อถอยลง
-    # - n_steps: จำนวนขั้นสูงสุดในรอบสะสมหลัก
-    buy_ladder: { d_buy: 0.03, m_buy: 1.5, n_steps: 3 }
+    # - d_buy: ระยะห่างเริ่มต้นของขั้นแรก (ใช้ร่วมกับ spacing_mode)
+    # - spacing_mode: "fibo" = เว้นช่วงลึกขึ้นตาม Fibonacci, "geometric" = คงที่
+    # - n_steps: จำนวนขั้นสูงสุดในรอบสะสมหลัก (ตั้ง 10 ให้ลงลึกแบบ fibo)
+    buy_ladder: { d_buy: 0.015, m_buy: 1.5, n_steps: 10, spacing_mode: fibo, max_step_drop: 0.25 }
 
     profit_trail:
       p_min: 0.02
@@ -111,11 +110,10 @@ pairs:
     lookback_days: 2
     fees: { taker: 0.001, maker: 0.001 }
 
-    # บันไดสะสมหลัก (Martingale)
-    # - d_buy: ระยะห่างแต่ละขั้น (เริ่ม 3%)
-    # - m_buy: ตัวคูณขนาดไม้เมื่อถอยลง
-    # - n_steps: จำนวนขั้นสูงสุดในรอบสะสมหลัก
-    buy_ladder: { d_buy: 0.03, m_buy: 1.5, n_steps: 3 }
+    # - d_buy: ระยะห่างเริ่มต้นของขั้นแรก (ใช้ร่วมกับ spacing_mode)
+    # - spacing_mode: "fibo" = เว้นช่วงลึกขึ้นตาม Fibonacci, "geometric" = คงที่
+    # - n_steps: จำนวนขั้นสูงสุดในรอบสะสมหลัก (ตั้ง 10 ให้ลงลึกแบบ fibo)
+    buy_ladder: { d_buy: 0.015, m_buy: 1.5, n_steps: 10, spacing_mode: fibo, max_step_drop: 0.25 }
 
     profit_trail:
       p_min: 0.02

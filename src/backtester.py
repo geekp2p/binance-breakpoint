@@ -33,6 +33,9 @@ class PairConfig:
     buy_d: float
     buy_m: float
     buy_n: int
+    buy_spacing: str = "geometric"
+    buy_multipliers: Any = None
+    buy_max_drop: float = 0.25    
     p_min: float
     s1: float
     m_step: float
@@ -61,7 +64,14 @@ def init_state_from_config(cfg: PairConfig):
     fees = cfg.fees_maker if cfg.use_maker else cfg.fees_taker
     return StrategyState(
         fees_buy=fees, fees_sell=fees, b_alloc=cfg.b_alloc,
-        buy=BuyLadderConf(d_buy=cfg.buy_d, m_buy=cfg.buy_m, n_steps=cfg.buy_n),
+        buy=BuyLadderConf(
+            d_buy=cfg.buy_d,
+            m_buy=cfg.buy_m,
+            n_steps=cfg.buy_n,
+            spacing_mode=cfg.buy_spacing,
+            d_multipliers=cfg.buy_multipliers,
+            max_step_drop=cfg.buy_max_drop,
+        ),
         trail=ProfitTrailConf(p_min=cfg.p_min, s1=cfg.s1, m_step=cfg.m_step, tau=cfg.tau,
                               p_lock_base=cfg.p_lock_base, p_lock_max=cfg.p_lock_max,
                               tau_min=cfg.tau_min, no_loss_epsilon=cfg.no_loss_epsilon),
