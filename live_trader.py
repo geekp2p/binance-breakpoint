@@ -128,8 +128,11 @@ def main() -> None:
     parser.add_argument("--poll-seconds", type=float, default=10.0, help="Polling interval for klines")
     parser.add_argument(
         "--savepoint-dir",
-        default=str(DEFAULT_SAVEPOINT_DIR),
-        help="Directory where live state snapshots will be stored",
+        default=os.getenv("SAVEPOINT_DIR", str(DEFAULT_SAVEPOINT_DIR)),
+        help=(
+            "Directory where live state snapshots will be stored; can be overridden "
+            "with SAVEPOINT_DIR environment variable"
+        ),
     )
     args = parser.parse_args()
 

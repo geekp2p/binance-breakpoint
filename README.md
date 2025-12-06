@@ -18,6 +18,20 @@ docker compose up demo
 
 ผลลัพธ์: `./out/<SYMBOL>_{events,equity,trades,summary}.(csv/json)` + `plot.png`
 
+### Persist live savepoints (Windows/Mac/Linux)
+- ดีฟอลต์: `live` จะเขียนไฟล์สถานะไปที่ `/app/savepoint` ในคอนเทนเนอร์ และ **bind mount** ไปยังโฟลเดอร์ `./savepoint` ที่อยู่ข้างไฟล์ `docker-compose.yml` (บน Windows จะเห็นที่ `C:\\\\...\\binance-breakpoint\\savepoint`).
+- สามารถย้ายที่เก็บได้ด้วยตัวเลือก `--savepoint-dir` หรือกำหนด env `SAVEPOINT_DIR` (เช่น `SAVEPOINT_DIR=/app/savepoint`) แล้ว mount path นั้นจากโฮสต์
+  ```yaml
+  # docker-compose.yml (ตัวอย่าง)
+  services:
+    live:
+      environment:
+        - SAVEPOINT_DIR=/app/savepoint
+      volumes:
+        - ./savepoint:/app/savepoint   # บน Windows ใช้เส้นทางเดียวกันนี้ได้
+  ```
+- ตรวจสอบว่าโฟลเดอร์ `savepoint` ถูกสร้างบนโฮสต์ก่อนรัน (หรือปล่อยให้ Docker สร้างให้) เพื่อให้สถานะไม่หายเวลา restart/สร้างคอนเทนเนอร์ใหม่
+
 ### PnL Summary (Backtest + Live)
 ใช้ `summary.py` เพื่อรวบรวม PnL จากไฟล์ backtest (`out/*summary*`) และสถานะ live (`savepoint/<SYMBOL>.json`)
 ```bash

@@ -34,7 +34,10 @@ services:
       - .env
     environment:
       - TZ=Asia/Bangkok
+      - SAVEPOINT_DIR=/app/savepoint
+
     volumes:
       - ./config.yaml:/app/config.yaml:ro
+      - ./savepoint:/app/savepoint      
     command: ["python","live_trader.py","--config","config.yaml"]
     restart: unless-stopped
