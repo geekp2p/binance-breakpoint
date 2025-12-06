@@ -32,6 +32,16 @@ docker compose up demo
   ```
 - ตรวจสอบว่าโฟลเดอร์ `savepoint` ถูกสร้างบนโฮสต์ก่อนรัน (หรือปล่อยให้ Docker สร้างให้) เพื่อให้สถานะไม่หายเวลา restart/สร้างคอนเทนเนอร์ใหม่
 
+- ต้องการทดสอบว่าไฟล์บันทึกถูกสร้างจริงหรือไม่ (dry-run ก็ได้):
+  ```bash
+  mkdir -p savepoint/test
+  python live_trader.py --symbol ZECUSDT --dry-run --poll-seconds 2 --savepoint-dir savepoint/test
+  # รอให้รัน 2-3 รอบแล้วกด Ctrl+C
+  ls savepoint/test
+  python summary.py --savepoint-dir savepoint/test --out-dir out
+  ```
+  สคริปต์จะสร้าง `ZECUSDT.json` พร้อมไฟล์ event log (`*_event_log.{jsonl,csv}`) และสรุป PnL ที่ดึงจากไฟล์บันทึกได้ ใช้ขั้นตอนเดียวกันนี้กับ Docker (`docker compose up live`) โดยตรวจสอบไฟล์ในโฟลเดอร์ `savepoint`
+
 ### PnL Summary (Backtest + Live)
 ใช้ `summary.py` เพื่อรวบรวม PnL จากไฟล์ backtest (`out/*summary*`) และสถานะ live (`savepoint/<SYMBOL>.json`)
 ```bash

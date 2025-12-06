@@ -14,7 +14,7 @@ import requests
 from main import load_config
 from src.backtester import PairConfig, init_state_from_config, prepare_ladder
 from src.fetchers.binance import INTERVAL_MS
-from src.strategy import PHASE_ACCUMULATE
+from src.strategy import PHASE_ACCUMULATE, PHASE_TRAIL
 from src.binance_client import BinanceClient
 from src.savepoint import (
     DEFAULT_SAVEPOINT_DIR,
@@ -418,6 +418,19 @@ def main() -> None:
                 if state.ladder_next_idx < len(state.ladder_prices)
                 else None
             )
+            next_buy_quote = (
+                state.ladder_amounts_quote[state.ladder_next_idx]
+                if state.ladder_next_idx < len(state.ladder_amounts_quote)
+                else None
+            )
+            next_sell_target = None
+            if state.Q > 0:
+                if state.phase == PHASE_TRAIL:
+                    next_sell_target = floor_price
+                else:
+                    next_sell_target = state.TP_base
+                    if next_sell_target is None and p_be is not None:
+                        next_sell_target = p_be * (1 + state.trail.p_min)
             return {
                 "timestamp": ts.isoformat(),
                 "price": current_price,
@@ -429,6 +442,8 @@ def main() -> None:
                 "p_be": p_be,
                 "floor_price": floor_price,
                 "next_buy_price": next_buy,
+                "next_buy_quote": next_buy_quote,
+                "next_sell_price": next_sell_target,
                 "ladder_index": state.ladder_next_idx,
                 "ladder_total": len(state.ladder_prices),
                 "unrealized_pnl": unrealized_pnl,
@@ -450,6 +465,10 @@ def main() -> None:
                 parts.append(f"floor={status['floor_price']:.4f}")
             if status["next_buy_price"] is not None:
                 parts.append(f"next_buy={status['next_buy_price']:.4f}")
+            if status["next_buy_quote"] is not None:
+                parts.append(f"next_buy_q={status['next_buy_quote']:.2f}")
+            if status["next_sell_price"] is not None:
+                parts.append(f"sell_at={status['next_sell_price']:.4f}")
             if status["unrealized_pnl"] is not None:
                 parts.append(f"unrealized={status['unrealized_pnl']:.2f}")
             parts.append(f"realized_total={status['realized_pnl_total']:.2f}")
