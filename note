@@ -2,3 +2,7 @@ docker compose up -d --build --force-recreate
 docker compose up --build --force-recreate
 
 python -m compileall src tests
+
+docker compose build backtest demo live
+
+docker compose up live
