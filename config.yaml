@@ -105,7 +105,7 @@ pairs:
 
   - symbol: DCRUSDT
     quote: USDT
-    b_alloc: 7777.0
+    b_alloc: 6666.0
     source: binance
     interval: 1m
     lookback_days: 2
@@ -204,7 +204,7 @@ pairs:
 
   - symbol: DGBUSDT
     quote: USDT
-    b_alloc: 7777.0
+    b_alloc: 5555.0
     source: binance
     interval: 1m
     lookback_days: 2
@@ -303,7 +303,7 @@ pairs:
 
   - symbol: BNBUSDT
     quote: USDT
-    b_alloc: 7777.0
+    b_alloc: 3333.0
     source: binance
     interval: 1m
     lookback_days: 2
