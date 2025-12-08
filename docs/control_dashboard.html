@@ -250,9 +250,11 @@
               <th>Avg</th>
               <th>Unrealized</th>
               <th>Realized Total</th>
+              <th>Cumulative PnL</th>
               <th>Next (Buy/Sell)</th>
               <th>Ladder</th>
               <th>Status</th>
+              <th>Exit</th>
               <th>Actions</th>
             </tr>
           </thead>
@@ -278,7 +280,10 @@
     function fmtNumber(value, digits = 2) {
       if (value === null || value === undefined || Number.isNaN(value)) return "-";
       const abs = Math.abs(value);
-      const d = abs >= 1000 ? 2 : digits;
+      let d = digits;
+      if (abs < 1) d = Math.max(digits, 6);
+      else if (abs < 100) d = Math.max(digits, 4);
+      else if (abs >= 1000) d = 2;
       return Number(value).toLocaleString(undefined, { minimumFractionDigits: d, maximumFractionDigits: d });
     }
 
@@ -380,19 +385,24 @@
           const ladder = `${v.ladder_index + 1}/${v.ladder_total}`;
           const actionLabel = v.paused ? "Resume" : "Pause";
           const actionClass = v.paused ? "btn-secondary" : "btn-danger";
+          const cumulativePnl = (v.realized_pnl_total || 0) + (v.unrealized_pnl || 0);
+          const exitLabel = (v.unrealized_pnl || 0) >= 0 ? "Take profit" : "Cut loss";
+          const exitClass = (v.unrealized_pnl || 0) >= 0 ? "" : "btn-danger";
 
           return `
             <tr>
               <td><strong>${symbol}</strong><div class="muted">${v.timestamp ?? ""}</div></td>
               <td>${v.phase || "-"}</td>
               <td>${fmtNumber(v.price)}</td>
-              <td>${fmtNumber(v.qty, 6)}<div class="muted">Spent ${fmtNumber(v.quote_spent)} quote</div></td>
+              <td>${fmtNumber(v.qty, 6)}<div class="muted">Spent ${fmtNumber(v.quote_spent, 6)} quote</div></td>
               <td>${v.avg_price ? fmtNumber(v.avg_price) : "-"}</td>
               <td class="${pnlClass(v.unrealized_pnl)}">${unrealizedCell}</td>
               <td class="${pnlClass(v.realized_pnl_total)}">${formatPnl(v.realized_pnl_total)}</td>
+              <td class="${pnlClass(cumulativePnl)}">${formatPnl(cumulativePnl)}</td>
               <td><div class="muted">Buy: ${nextBuy}</div><div class="muted">Sell: ${nextSell}</div></td>
               <td>${ladder}</td>
               <td><span class="status ${statusClass}">${statusText}</span></td>
+              <td><button class="${exitClass}" aria-label="${exitLabel}" disabled>${exitLabel}</button></td>
               <td><button class="${actionClass}" data-symbol="${symbol}" data-paused="${v.paused}">${actionLabel}</button></td>
             </tr>`;
         })
