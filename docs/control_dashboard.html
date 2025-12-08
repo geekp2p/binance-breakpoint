@@ -382,12 +382,20 @@
           const unrealizedCell = v.unrealized_pnl === null ? "-" : formatPnl(v.unrealized_pnl);
           const nextSell = v.next_sell_price ? fmtNumber(v.next_sell_price) : "-";
           const nextBuy = v.next_buy_price ? fmtNumber(v.next_buy_price) : "-";
-          const ladder = `${v.ladder_index + 1}/${v.ladder_total}`;
+          const ladder =
+            typeof v.ladder_index === "number" && typeof v.ladder_total === "number"
+              ? `${v.ladder_index + 1}/${v.ladder_total}`
+              : "-";
           const actionLabel = v.paused ? "Resume" : "Pause";
           const actionClass = v.paused ? "btn-secondary" : "btn-danger";
           const cumulativePnl = (v.realized_pnl_total || 0) + (v.unrealized_pnl || 0);
           const exitLabel = (v.unrealized_pnl || 0) >= 0 ? "Take profit" : "Cut loss";
           const exitClass = (v.unrealized_pnl || 0) >= 0 ? "" : "btn-danger";
+          const hasPosition = (v.qty || 0) > 0;
+          const exitDisabled = hasPosition ? "" : "disabled";
+          const exitTitle = hasPosition
+            ? "Pause this pair to handle the exit manually"
+            : "No open position to exit";
 
           return `
             <tr>
@@ -402,8 +410,8 @@
               <td><div class="muted">Buy: ${nextBuy}</div><div class="muted">Sell: ${nextSell}</div></td>
               <td>${ladder}</td>
               <td><span class="status ${statusClass}">${statusText}</span></td>
-              <td><button class="${exitClass}" aria-label="${exitLabel}" disabled>${exitLabel}</button></td>
-              <td><button class="${actionClass}" data-symbol="${symbol}" data-paused="${v.paused}">${actionLabel}</button></td>
+              <td><button class="${exitClass}" data-action="exit" data-symbol="${symbol}" aria-label="${exitLabel}" title="${exitTitle}" ${exitDisabled}>${exitLabel}</button></td>
+              <td><button class="${actionClass}" data-action="toggle" data-symbol="${symbol}" data-paused="${v.paused}">${actionLabel}</button></td>
             </tr>`;
         })
         .join("");
@@ -424,6 +432,23 @@
       const btn = ev.target.closest("button[data-symbol]");
       if (!btn) return;
       const symbol = btn.dataset.symbol;
+      const action = btn.dataset.action;
+      if (action === "exit") {
+        const confirmMsg = `Pause ${symbol} to manage ${btn.textContent?.toLowerCase()} manually?`;
+        if (!window.confirm(confirmMsg)) return;
+        btn.disabled = true;
+        btn.textContent = "Pausing...";
+        try {
+          await postCommand(`/pause?symbol=${symbol}`);
+          await fetchHealth();
+        } catch (err) {
+          alert(`Command failed: ${err.message}`);
+        } finally {
+          btn.disabled = false;
+        }
+        return;
+      }
+
       const paused = btn.dataset.paused === "true";
       btn.disabled = true;
       btn.textContent = paused ? "Resuming..." : "Pausing...";
