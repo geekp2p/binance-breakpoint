@@ -55,6 +55,13 @@ class BinanceClient:
             self._symbol_cache[symbol] = symbols[symbol]
         return self._symbol_cache[symbol]
 
+    def get_ticker_price(self, symbol: str) -> float:
+        data = self._request("GET", "/api/v3/ticker/price", params={"symbol": symbol.upper()})
+        try:
+            return float(data.get("price"))
+        except (TypeError, ValueError):
+            return 0.0
+
     @staticmethod
     def _format_number(value: float, precision: int = 8) -> str:
         return f"{value:.{precision}f}".rstrip("0").rstrip(".") or "0"

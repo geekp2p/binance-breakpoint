@@ -106,11 +106,16 @@ class ControlCenter:
         self._lock = threading.Lock()
         self._status: Dict[str, Dict[str, object]] = {sym: {} for sym in symbols}
         self._paused: Dict[str, threading.Event] = {sym: threading.Event() for sym in symbols}
+        self._sell_requested: Dict[str, threading.Event] = {sym: threading.Event() for sym in symbols}
 
     def snapshot(self) -> Dict[str, Dict[str, object]]:
         with self._lock:
             return {
-                sym: {**status, "paused": self._paused[sym].is_set()}
+                sym: {
+                    **status,
+                    "paused": self._paused[sym].is_set(),
+                    "manual_exit": self._sell_requested[sym].is_set(),
+                }
                 for sym, status in self._status.items()
             }
 
@@ -141,6 +146,23 @@ class ControlCenter:
     def is_paused(self, symbol: str) -> bool:
         ev = self._paused.get(symbol)
         return bool(ev and ev.is_set())
+
+    def request_sell(self, symbol: Optional[str] = None) -> List[str]:
+        targets = [symbol] if symbol else list(self._sell_requested.keys())
+        requested: List[str] = []
+        for sym in targets:
+            ev = self._sell_requested.get(sym)
+            if ev:
+                ev.set()
+                requested.append(sym)
+        return requested
+
+    def consume_sell_request(self, symbol: str) -> bool:
+        ev = self._sell_requested.get(symbol)
+        if ev and ev.is_set():
+            ev.clear()
+            return True
+        return False
 
 
 def create_http_handler(control: ControlCenter):
@@ -183,6 +205,10 @@ def create_http_handler(control: ControlCenter):
             if parsed.path == "/resume":
                 affected = control.resume(symbol)
                 self._json(200, {"status": "resumed", "pairs": affected})
+                return
+            if parsed.path == "/sell":
+                affected = control.request_sell(symbol)
+                self._json(200, {"status": "sell_requested", "pairs": affected})
                 return
             self._json(404, {"error": "not found"})
 
@@ -422,6 +448,24 @@ def main() -> None:
             _persist_records(delta, activity_jsonl, activity_csv)
             activity_persist_count = len(activity_history)
 
+        def _weighted_fill_price(order_resp: Dict[str, object]) -> Optional[float]:
+            fills = order_resp.get("fills") if isinstance(order_resp, dict) else None
+            if not fills:
+                return None
+            total_qty = 0.0
+            total_quote = 0.0
+            for f in fills:
+                try:
+                    qty = float(f.get("qty") or f.get("quantity") or 0.0)
+                    price = float(f.get("price") or 0.0)
+                except (TypeError, ValueError):
+                    continue
+                total_qty += qty
+                total_quote += qty * price
+            if total_qty <= 0 or total_quote <= 0:
+                return None
+            return total_quote / total_qty
+
         def clamp_buy_to_available(
             ev: Dict[str, object],
             available_quote: Optional[float],
@@ -613,8 +657,113 @@ def main() -> None:
             status=startup_status,
         )
 
+        def process_manual_sell(ts: datetime) -> bool:
+            nonlocal last_status, realized_pnl_total, last_open_time, event_log, event_ptr, event_persist_count
+            if not control.consume_sell_request(pair_symbol):
+                return False
+
+            qty = state.Q
+            if qty <= 0:
+                record_history({"ts": ts, "event": "MANUAL_EXIT_SKIPPED", "reason": "no_position"})
+                return True
+
+            executed_qty = qty
+            avg_price: Optional[float] = None
+            sell_response: Optional[Dict[str, object]] = None
+            if client:
+                try:
+                    available_qty = executed_qty
+                    if base_asset:
+                        try:
+                            available_qty = min(executed_qty, client.get_free_balance(base_asset))
+                        except Exception as exc:  # pylint: disable=broad-except
+                            logging.warning("Unable to fetch %s balance before manual sell: %s", base_asset, exc)
+                    if available_qty <= 0:
+                        record_history({"ts": ts, "event": "MANUAL_EXIT_SKIPPED", "reason": "no_available_balance"})
+                        return True
+
+                    sell_response = client.market_sell(pair_cfg.symbol, available_qty)
+                    logging.info("Manual sell response: %s", json.dumps(sell_response))
+                    executed_qty = float(sell_response.get("executedQty") or available_qty)
+                    avg_price = _weighted_fill_price(sell_response)
+                    commission_base = 0.0
+                    fills = sell_response.get("fills") if isinstance(sell_response, dict) else None
+                    if base_asset and fills:
+                        for f in fills:
+                            try:
+                                if str(f.get("commissionAsset", "")).upper() == base_asset:
+                                    commission_base += float(f.get("commission", 0.0))
+                            except (TypeError, ValueError):
+                                continue
+                    executed_qty = max(executed_qty - commission_base, 0.0)
+                except Exception as exc:  # pylint: disable=broad-except
+                    logging.error("Manual sell failed: %s", exc)
+                    record_history({"ts": ts, "event": "MANUAL_EXIT_FAILED", "reason": str(exc)})
+                    return True
+            else:
+                logging.info("Dry-run manual exit for %s", pair_cfg.symbol)
+
+            if executed_qty <= 0:
+                record_history({"ts": ts, "event": "MANUAL_EXIT_SKIPPED", "reason": "no_executed_qty"})
+                return True
+
+            if avg_price is None:
+                try:
+                    avg_price = client.get_ticker_price(pair_cfg.symbol) if client else None
+                except Exception as exc:  # pylint: disable=broad-except
+                    logging.warning("Unable to fetch ticker price for manual exit: %s", exc)
+            if avg_price is None or avg_price <= 0:
+                avg_price = float(last_status.get("price") or latest["close"])
+
+            gross_proceeds = avg_price * executed_qty
+            fee_rate = max(state.fees_sell, 0.001)
+            net_proceeds = gross_proceeds * (1 - fee_rate)
+            cost_share = state.C * (executed_qty / qty) if qty > 0 else 0.0
+            realized_pnl = net_proceeds - cost_share
+
+            state.Q = max(state.Q - executed_qty, 0.0)
+            state.C = max(state.C - cost_share, 0.0)
+            realized_pnl_total += realized_pnl
+
+            record_history(
+                {
+                    "ts": ts,
+                    "event": "MANUAL_EXIT",
+                    "qty": executed_qty,
+                    "price": avg_price,
+                    "gross_proceeds": gross_proceeds,
+                    "net_proceeds": net_proceeds,
+                    "fee_rate": fee_rate,
+                    "pnl": realized_pnl,
+                    "realized_pnl_total": realized_pnl_total,
+                }
+            )
+
+            reset_round(state, avg_price, ts)
+            event_log.clear()
+            event_ptr = 0
+            event_persist_count = 0
+            status_snapshot = build_status_snapshot(avg_price, ts)
+            last_status = serialise_status(status_snapshot)
+            control.update_status(pair_symbol, last_status)
+            write_savepoint(
+                savepoint_dir,
+                pair_cfg.symbol,
+                state,
+                last_open_time=last_open_time,
+                event_log=event_log,
+                activity_history=activity_history,
+                realized_pnl_total=realized_pnl_total,
+                latest_price=avg_price,
+                status=status_snapshot,
+            )
+            return True
+
         while True:
             try:
+                if process_manual_sell(datetime.now(timezone.utc)):
+                    time.sleep(args.poll_seconds)
+                    continue
                 if control.is_paused(pair_symbol):
                     paused_status = {**last_status, "note": "paused"}
                     last_status = paused_status

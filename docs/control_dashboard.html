@@ -394,7 +394,7 @@
           const hasPosition = (v.qty || 0) > 0;
           const exitDisabled = hasPosition ? "" : "disabled";
           const exitTitle = hasPosition
-            ? "Pause this pair to handle the exit manually"
+            ? "Sell now at market (includes ~0.1% fee)"
             : "No open position to exit";
 
           return `
@@ -434,12 +434,12 @@
       const symbol = btn.dataset.symbol;
       const action = btn.dataset.action;
       if (action === "exit") {
-        const confirmMsg = `Pause ${symbol} to manage ${btn.textContent?.toLowerCase()} manually?`;
+        const confirmMsg = `Sell ${symbol} now at market? (~0.1% fee applied)`;
         if (!window.confirm(confirmMsg)) return;
         btn.disabled = true;
-        btn.textContent = "Pausing...";
+        btn.textContent = "Selling...";
         try {
-          await postCommand(`/pause?symbol=${symbol}`);
+          await postCommand(`/sell?symbol=${symbol}`);
           await fetchHealth();
         } catch (err) {
           alert(`Command failed: ${err.message}`);
