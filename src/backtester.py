@@ -2,7 +2,7 @@
 import os, yaml
 import pandas as pd
 from dataclasses import dataclass
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from .utils import geometric_base_allocation, compute_ladder_prices
 from .strategy import (
     StrategyState,
@@ -59,6 +59,12 @@ class PairConfig:
     buy_spacing: str = "geometric"
     buy_multipliers: Any = None
     buy_max_drop: float = 0.25
+    buy_size_mode: str = "geometric"
+    buy_gap_mode: str = "additive"
+    buy_gap_factor: float = 1.0
+    buy_base_order_quote: float | None = None
+    buy_max_quote_per_leg: float = 0.0
+    buy_max_total_quote: float = 0.0
 
 def init_state_from_config(cfg: PairConfig):
     fees = cfg.fees_maker if cfg.use_maker else cfg.fees_taker
@@ -71,6 +77,12 @@ def init_state_from_config(cfg: PairConfig):
             spacing_mode=cfg.buy_spacing,
             d_multipliers=cfg.buy_multipliers,
             max_step_drop=cfg.buy_max_drop,
+            size_mode=cfg.buy_size_mode,
+            gap_mode=cfg.buy_gap_mode,
+            gap_factor=cfg.buy_gap_factor,
+            base_order_quote=cfg.buy_base_order_quote,
+            max_quote_per_leg=cfg.buy_max_quote_per_leg,
+            max_total_quote=cfg.buy_max_total_quote,
         ),
         trail=ProfitTrailConf(p_min=cfg.p_min, s1=cfg.s1, m_step=cfg.m_step, tau=cfg.tau,
                               p_lock_base=cfg.p_lock_base, p_lock_max=cfg.p_lock_max,

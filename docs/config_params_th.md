@@ -9,6 +9,13 @@
 - **max_step_drop**: เพดาน % ดรอปต่อขั้น (กัน spacing ลึกเกินไป, ค่าเริ่มต้น 0.25 = 25%).
 - **m_buy**: ตัวคูณขนาดคำสั่งของแต่ละขั้นเมื่อถอยลง (Martingale multiplier).
 - **n_steps**: จำนวนขั้นสูงสุดของบันไดสะสมหลัก ถ้าครบแล้วจะไม่เปิดไม้เพิ่มจนกว่าจะรีเซ็ตรอบใหม่.
+- **size_mode**:
+  - `geometric` (ค่าเริ่มต้น): ขนาดไม้สเกลด้วย `m_buy` แบบ Martingale.
+  - `fibonacci`: ใช้น้ำหนัก Fibonacci (หรือ `base_order_quote` เป็นตัวตั้ง) เพื่อกันการทบเร็วเกินไปในช่วงแรก.
+- **gap_mode / gap_factor**:
+  - `additive` (ค่าเริ่มต้น): ระยะห่างคงที่หรือคูณตาม `d_multipliers`/Fibonacci.
+  - `multiplicative`: ระยะห่างลึกขึ้นแบบกำลัง (`d_buy * gap_factor^k`).
+- **max_quote_per_leg / max_total_quote**: เพดานมูลค่าออเดอร์แต่ละขั้น และเพดานรวมของ ladder ต่อคู่ ลดความเสี่ยงทบไม้เร็ว.
 
 ## features.scalp_mode
 - **max_trades**: จำนวนไม้ scalp สูงสุดต่อรอบ (ชุด “เข้าเร็ว–ออกเร็ว” แยกจากบันไดหลัก ไม่กินงบ n_steps).

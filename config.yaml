@@ -16,7 +16,18 @@ pairs:
     # - d_buy: ระยะห่างแต่ละขั้น (เริ่ม 3%)
     # - m_buy: ตัวคูณขนาดไม้เมื่อถอยลง
     # - n_steps: จำนวนขั้นสูงสุดในรอบสะสมหลัก
-    buy_ladder: { d_buy: 0.03, m_buy: 1.5, n_steps: 3 }
+      buy_ladder:
+      d_buy: 0.015
+      m_buy: 1.5
+      n_steps: 10
+      spacing_mode: fibo
+      size_mode: fibonacci
+      gap_mode: multiplicative
+      gap_factor: 1.05
+      max_step_drop: 0.25
+      base_order_quote: 0.0
+      max_quote_per_leg: 0.0
+      max_total_quote: 0.0
 
     profit_trail:
       p_min: 0.02
@@ -115,7 +126,18 @@ pairs:
     # - d_buy: ระยะห่างแต่ละขั้น (เริ่ม 3%)
     # - m_buy: ตัวคูณขนาดไม้เมื่อถอยลง
     # - n_steps: จำนวนขั้นสูงสุดในรอบสะสมหลัก
-    buy_ladder: { d_buy: 0.03, m_buy: 1.5, n_steps: 3 }
+      buy_ladder:
+      d_buy: 0.015
+      m_buy: 1.5
+      n_steps: 10
+      spacing_mode: fibo
+      size_mode: fibonacci
+      gap_mode: multiplicative
+      gap_factor: 1.05
+      max_step_drop: 0.25
+      base_order_quote: 0.0
+      max_quote_per_leg: 0.0
+      max_total_quote: 0.0
 
     profit_trail:
       p_min: 0.02
@@ -214,7 +236,18 @@ pairs:
     # - d_buy: ระยะห่างแต่ละขั้น (เริ่ม 3%)
     # - m_buy: ตัวคูณขนาดไม้เมื่อถอยลง
     # - n_steps: จำนวนขั้นสูงสุดในรอบสะสมหลัก
-    buy_ladder: { d_buy: 0.03, m_buy: 1.5, n_steps: 3 }
+      buy_ladder:
+      d_buy: 0.015
+      m_buy: 1.5
+      n_steps: 10
+      spacing_mode: fibo
+      size_mode: fibonacci
+      gap_mode: multiplicative
+      gap_factor: 1.05
+      max_step_drop: 0.25
+      base_order_quote: 0.0
+      max_quote_per_leg: 0.0
+      max_total_quote: 0.0
 
     profit_trail:
       p_min: 0.02
@@ -313,7 +346,18 @@ pairs:
     # - d_buy: ระยะห่างแต่ละขั้น (เริ่ม 3%)
     # - m_buy: ตัวคูณขนาดไม้เมื่อถอยลง
     # - n_steps: จำนวนขั้นสูงสุดในรอบสะสมหลัก
-    buy_ladder: { d_buy: 0.03, m_buy: 1.5, n_steps: 3 }
+      buy_ladder:
+      d_buy: 0.015
+      m_buy: 1.5
+      n_steps: 10
+      spacing_mode: fibo
+      size_mode: fibonacci
+      gap_mode: multiplicative
+      gap_factor: 1.05
+      max_step_drop: 0.25
+      base_order_quote: 0.0
+      max_quote_per_leg: 0.0
+      max_total_quote: 0.0
 
     profit_trail:
       p_min: 0.02

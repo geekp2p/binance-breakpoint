@@ -5,7 +5,7 @@ import pandas as pd
 import math
 import sys
 
-from .utils import compute_ladder_prices, geometric_base_allocation
+from .utils import compute_ladder_prices, compute_ladder_amounts
 
 PHASE_ACCUMULATE = "ACCUMULATE"
 PHASE_TRAIL = "TRAIL"
@@ -15,9 +15,15 @@ class BuyLadderConf:
     d_buy: float
     m_buy: float
     n_steps: int
+    size_mode: str = "geometric"
+    gap_mode: str = "additive"
+    gap_factor: float = 1.0
+    base_order_quote: Optional[float] = None
     spacing_mode: str = "geometric"
     d_multipliers: Optional[list] = None
-    max_step_drop: float = 0.25    
+    max_step_drop: float = 0.25
+    max_quote_per_leg: float = 0.0
+    max_total_quote: float = 0.0
 
 @dataclass
 class AdaptiveLadderConf:
@@ -178,8 +184,9 @@ class StrategyState:
     bar_index: int = 0    
 
     def _remaining_quote_allocation(self) -> float:
+        effective_alloc = min(self.b_alloc, self.buy.max_total_quote) if self.buy.max_total_quote > 0 else self.b_alloc
         spent = sum(self.ladder_amounts_quote[:self.ladder_next_idx]) + self._scalp_committed_quote()
-        remaining = max(self.b_alloc - spent, 0.0)
+        remaining = max(effective_alloc - spent, 0.0)
         return remaining
     
     def _effective_n_steps(self) -> int:
@@ -198,8 +205,15 @@ class StrategyState:
     def rebuild_ladder(self, base_price: float, ts=None, log_events: Optional[List[Dict[str, Any]]] = None,
                        reason: str = "RESET", preserve_progress: bool = False):
         steps = self._effective_n_steps()
-        a = geometric_base_allocation(self.b_alloc, self.buy.m_buy, steps)
-        amounts = [a * (self.buy.m_buy ** i) for i in range(steps)]
+        amounts = compute_ladder_amounts(
+            self.b_alloc,
+            self.buy.m_buy,
+            steps,
+            size_mode=self.buy.size_mode,
+            base_order_quote=self.buy.base_order_quote,
+            max_quote_per_leg=self.buy.max_quote_per_leg,
+            max_total_quote=self.buy.max_total_quote,
+        )
         prev_idx = self.ladder_next_idx if preserve_progress else 0
         self.ladder_amounts_quote = amounts
         self.ladder_prices = compute_ladder_prices(
@@ -209,6 +223,8 @@ class StrategyState:
             spacing_mode=self.buy.spacing_mode,
             d_multipliers=self.buy.d_multipliers,
             max_step_drop=self.buy.max_step_drop,
+            gap_mode=self.buy.gap_mode,
+            gap_factor=self.buy.gap_factor,
         )
         self.ladder_next_idx = min(prev_idx, steps)
         self.anchor_base_price = base_price
@@ -365,10 +381,11 @@ class StrategyState:
         return total
 
     def _remaining_scalp_allocation(self) -> float:
-        target_alloc = self.b_alloc * max(min(self.scalp.order_pct_allocation, 1.0), 0.0)
+        effective_alloc = min(self.b_alloc, self.buy.max_total_quote) if self.buy.max_total_quote > 0 else self.b_alloc
+        target_alloc = effective_alloc * max(min(self.scalp.order_pct_allocation, 1.0), 0.0)
         spent_ladder = sum(self.ladder_amounts_quote[:self.ladder_next_idx])
         spent_scalp = self._scalp_committed_quote()
-        remaining_quote = max(self.b_alloc - spent_ladder - spent_scalp, 0.0)
+        remaining_quote = max(effective_alloc - spent_ladder - spent_scalp, 0.0)
         return min(target_alloc, remaining_quote)
 
     def _disarm_btd(self):
