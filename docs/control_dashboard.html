@@ -290,7 +290,11 @@
       const base = apiBaseEl.value.replace(/\/$/, "");
       const useProxy = proxyToggle?.checked;
       const full = `${base}${path}`;
-      return useProxy ? `https://cors.isomorphic-git.org/${full}` : full;
+      if (!useProxy) return full;
+
+      // Encode to avoid proxy blocking when the URL contains query params or protocol prefixes
+      const encoded = encodeURIComponent(full);
+      return `https://corsproxy.io/?${encoded}`;
     }
 
     async function postCommand(path) {
