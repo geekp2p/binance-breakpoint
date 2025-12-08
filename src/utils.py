@@ -79,6 +79,8 @@ def compute_ladder_prices(
     spacing_mode: str = "geometric",
     d_multipliers=None,
     max_step_drop: float = 0.25,
+    gap_mode: str = "additive",
+    gap_factor: float = 1.0,
 ):
     """
     Calculate ladder entry prices with optional non-linear spacing.
@@ -88,6 +90,10 @@ def compute_ladder_prices(
         - "fibo": widening spacing using Fibonacci multipliers or a custom list
           (`d_multipliers`). Each step drop is `d_buy * multiplier`, capped by
           `max_step_drop`.
+    gap_mode:
+        - "additive" (default): keep spacing multipliers unchanged across steps.
+        - "multiplicative": widen spacing by multiplying the step multiplier by
+          `gap_factor` on every additional step (only relevant for fibo/custom lists).
     """
 
     steps = max(1, int(n_steps))

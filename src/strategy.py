@@ -88,6 +88,20 @@ class ScalpModeConf:
     scale_strength: float = 0.5
     order_pct_allocation: float = 0.33
 
+# --- Micro oscillation scalp ---
+@dataclass
+class MicroOscillationConf:
+    enabled: bool = False
+    window: int = 30
+    max_band_pct: float = 0.006
+    min_swings: int = 4
+    min_swing_pct: float = 0.0008
+    entry_band_pct: float = 0.15
+    take_profit_pct: float = 0.0025
+    stop_break_pct: float = 0.005
+    order_pct_allocation: float = 0.15
+    cooldown_bars: int = 5
+
 # --- Scaffolds ---
 @dataclass
 class BuyTheDipConf:
@@ -131,6 +145,7 @@ class StrategyState:
     scalp: ScalpModeConf
     btd: BuyTheDipConf
     sah: SellAtHeightConf
+    micro: MicroOscillationConf
     snapshot_every_bars: int
     use_maker: bool
 
@@ -181,11 +196,22 @@ class StrategyState:
     anchor_last_move_ts: Optional[pd.Timestamp] = None
     anchor_last_move_bar: int = 0
     anchor_base_price: Optional[float] = None
-    bar_index: int = 0    
+    bar_index: int = 0
+
+    # Micro oscillation scalp state
+    micro_prices: List[float] = field(default_factory=list)
+    micro_last_direction: Optional[int] = None
+    micro_swings: int = 0
+    micro_cooldown_until_bar: int = 0
+    micro_positions: List[Dict[str, float]] = field(default_factory=list)  
 
     def _remaining_quote_allocation(self) -> float:
         effective_alloc = min(self.b_alloc, self.buy.max_total_quote) if self.buy.max_total_quote > 0 else self.b_alloc
-        spent = sum(self.ladder_amounts_quote[:self.ladder_next_idx]) + self._scalp_committed_quote()
+        spent = (
+            sum(self.ladder_amounts_quote[:self.ladder_next_idx])
+            + self._scalp_committed_quote()
+            + self._micro_committed_quote()
+        )
         remaining = max(effective_alloc - spent, 0.0)
         return remaining
     
@@ -380,12 +406,27 @@ class StrategyState:
             total += pos.get("cost", 0.0) / (1 + self.fees_buy)
         return total
 
+    def _micro_committed_quote(self) -> float:
+        total = 0.0
+        for pos in self.micro_positions:
+            total += pos.get("cost", 0.0) / (1 + self.fees_buy)
+        return total
+
     def _remaining_scalp_allocation(self) -> float:
         effective_alloc = min(self.b_alloc, self.buy.max_total_quote) if self.buy.max_total_quote > 0 else self.b_alloc
         target_alloc = effective_alloc * max(min(self.scalp.order_pct_allocation, 1.0), 0.0)
         spent_ladder = sum(self.ladder_amounts_quote[:self.ladder_next_idx])
         spent_scalp = self._scalp_committed_quote()
         remaining_quote = max(effective_alloc - spent_ladder - spent_scalp, 0.0)
+        return min(target_alloc, remaining_quote)
+
+    def _remaining_micro_allocation(self) -> float:
+        effective_alloc = min(self.b_alloc, self.buy.max_total_quote) if self.buy.max_total_quote > 0 else self.b_alloc
+        target_alloc = effective_alloc * max(min(self.micro.order_pct_allocation, 1.0), 0.0)
+        spent_ladder = sum(self.ladder_amounts_quote[:self.ladder_next_idx])
+        spent_scalp = self._scalp_committed_quote()
+        spent_micro = self._micro_committed_quote()
+        remaining_quote = max(effective_alloc - spent_ladder - spent_scalp - spent_micro, 0.0)
         return min(target_alloc, remaining_quote)
 
     def _disarm_btd(self):
@@ -547,6 +588,134 @@ class StrategyState:
         self.scalp_positions = remaining_positions
     # --- End scalp helpers ---
 
+        # --- Micro oscillation helpers ---
+    def _update_micro_window(self, c: float):
+        if not self.micro.enabled:
+            return
+        window = max(5, int(self.micro.window))
+        if c > 0:
+            self.micro_prices.append(c)
+        if len(self.micro_prices) > window:
+            self.micro_prices = self.micro_prices[-window:]
+        if len(self.micro_prices) < 2:
+            return
+        prev = self.micro_prices[-2]
+        change = (c - prev) / prev if prev > 0 else 0.0
+        direction = 0
+        if change > self.micro.min_swing_pct:
+            direction = 1
+        elif change < -self.micro.min_swing_pct:
+            direction = -1
+        if direction != 0:
+            if self.micro_last_direction is not None and direction != self.micro_last_direction:
+                self.micro_swings += 1
+            self.micro_last_direction = direction
+
+    def _micro_snapshot(self) -> Optional[Dict[str, float]]:
+        if not self.micro.enabled or len(self.micro_prices) < max(5, int(self.micro.window) // 2):
+            return None
+        lo, hi = min(self.micro_prices), max(self.micro_prices)
+        if hi <= 0:
+            return None
+        band_pct = (hi - lo) / hi
+        ready = (
+            band_pct <= self.micro.max_band_pct
+            and self.micro_swings >= max(1, int(self.micro.min_swings))
+        )
+        return {
+            "low": lo,
+            "high": hi,
+            "band_pct": band_pct,
+            "ready": ready,
+        }
+
+    def _maybe_micro_buy(self, ts, h, l, log_events: List[Dict[str, Any]]):
+        if not self.micro.enabled or self.bar_index < self.micro_cooldown_until_bar:
+            return
+        snap = self._micro_snapshot()
+        if not snap or not snap["ready"]:
+            return
+        band_span = snap["high"] - snap["low"]
+        if band_span <= 0:
+            return
+        entry = snap["low"] + band_span * max(min(self.micro.entry_band_pct, 1.0), 0.0)
+        if l > entry:
+            return
+        order_quote = self._remaining_micro_allocation()
+        if order_quote <= 0:
+            log_events.append({
+                "ts": ts,
+                "event": "MICRO_BUY_SKIPPED",
+                "reason": "NO_CAPITAL",
+                "entry": entry,
+                "band_pct": snap["band_pct"],
+            })
+            self.micro_cooldown_until_bar = self.bar_index + max(1, int(self.micro.cooldown_bars))
+            return
+        price = entry
+        qty = order_quote / price
+        cost = order_quote * (1 + self.fees_buy)
+        prev_qty = self.Q
+        self.Q += qty
+        self.C += cost
+        if prev_qty <= 0 < self.Q:
+            self.round_start_ts = ts
+        target = price * (1 + self.micro.take_profit_pct)
+        stop = price * (1 - self.micro.stop_break_pct)
+        self.micro_positions.append({
+            "entry": price,
+            "qty": qty,
+            "cost": cost,
+            "target": target,
+            "stop": stop,
+        })
+        self.micro_swings = 0
+        self.micro_cooldown_until_bar = self.bar_index + max(1, int(self.micro.cooldown_bars))
+        log_events.append({
+            "ts": ts,
+            "event": "MICRO_BUY",
+            "price": price,
+            "qty": qty,
+            "order_quote": order_quote,
+            "target": target,
+            "stop": stop,
+            "band_pct": snap["band_pct"],
+        })
+
+    def _check_micro_take_profit(self, ts, h, l, log_events: List[Dict[str, Any]]):
+        if not self.micro_positions:
+            return
+        remaining_positions: List[Dict[str, float]] = []
+        for pos in self.micro_positions:
+            target = pos["target"]
+            stop = pos["stop"]
+            qty = pos["qty"]
+            exit_price = None
+            reason = None
+            if h >= target:
+                exit_price = target
+                reason = "TP"
+            elif l <= stop:
+                exit_price = stop
+                reason = "STOP"
+            if exit_price is not None:
+                proceeds = qty * exit_price * (1 - self.fees_sell)
+                pnl = proceeds - pos["cost"]
+                self.Q = max(self.Q - qty, 0.0)
+                self.C = max(self.C - pos["cost"], 0.0)
+                log_events.append({
+                    "ts": ts,
+                    "event": f"MICRO_{reason}",
+                    "price": exit_price,
+                    "qty": qty,
+                    "proceeds": proceeds,
+                    "pnl": pnl,
+                })
+            else:
+                remaining_positions.append(pos)
+        self.micro_positions = remaining_positions
+    # --- End micro helpers ---
+
     # --- Scaffolding: detect/arm BTD/SAH, but do NOT auto-execute ---
     def _maybe_arm_btd(self, ts, low):
         if not self.btd.enabled or self.ladder_next_idx == 0:
@@ -594,16 +763,19 @@ class StrategyState:
 
         self._update_session_range(h, l)
         self._update_anchor_window(h, l, c)
+        self._update_micro_window(c)
 
         # --- scalp take-profit first (protect fast exits) ---
         self._check_scalp_take_profit(ts, h, log_events)
+        self._check_micro_take_profit(ts, h, l, log_events)
 
         # --- early scalp buys ---
         self._maybe_scalp_buy(ts, o, h, l, log_events)
+        self._maybe_micro_buy(ts, h, l, log_events)
         # --- adapt ladder spacing before consuming quote ---
         self._maybe_update_adaptive_spacing(ts, c, h, l, log_events)
         # --- dynamic anchor repositioning ---
-        self._maybe_shift_anchor(ts, c, log_events)        
+        self._maybe_shift_anchor(ts, c, log_events)         
 
         # --- Arm BTD/SAH (scaffold only; no auto-action) ---
         ev = self._maybe_arm_btd(ts, l)

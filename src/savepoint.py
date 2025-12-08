@@ -115,6 +115,11 @@ def state_to_payload(state: StrategyState) -> Dict[str, Any]:
         "anchor_last_move_bar": state.anchor_last_move_bar,
         "anchor_base_price": state.anchor_base_price,
         "bar_index": state.bar_index,
+        "micro_prices": list(state.micro_prices),
+        "micro_last_direction": state.micro_last_direction,
+        "micro_swings": state.micro_swings,
+        "micro_cooldown_until_bar": state.micro_cooldown_until_bar,
+        "micro_positions": list(state.micro_positions),
     }
 
 
@@ -159,6 +164,11 @@ def apply_payload_to_state(state: StrategyState, payload: Dict[str, Any]) -> Non
     state.anchor_last_move_bar = int(payload.get("anchor_last_move_bar", state.anchor_last_move_bar))
     state.anchor_base_price = payload.get("anchor_base_price", state.anchor_base_price)
     state.bar_index = int(payload.get("bar_index", state.bar_index))
+    state.micro_prices = list(payload.get("micro_prices", state.micro_prices))
+    state.micro_last_direction = payload.get("micro_last_direction", state.micro_last_direction)
+    state.micro_swings = int(payload.get("micro_swings", state.micro_swings))
+    state.micro_cooldown_until_bar = int(payload.get("micro_cooldown_until_bar", state.micro_cooldown_until_bar))
+    state.micro_positions = list(payload.get("micro_positions", state.micro_positions))
 
 
 def load_savepoint(directory: Path, symbol: str) -> Optional[Dict[str, Any]]:

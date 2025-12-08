@@ -13,6 +13,7 @@ from .strategy import (
     TimeMartingaleConf,
     TimeCapsConf,
     ScalpModeConf,
+    MicroOscillationConf,
     BuyTheDipConf,
     SellAtHeightConf,
 )
@@ -54,6 +55,7 @@ class PairConfig:
     btd: Dict[str, Any]
     sah: Dict[str, Any]
     scalp: Dict[str, Any]
+    micro: Dict[str, Any]
     adaptive_ladder: Dict[str, Any]
     anchor_drift: Dict[str, Any]
     buy_spacing: str = "geometric"
@@ -92,6 +94,7 @@ def init_state_from_config(cfg: PairConfig):
         tcaps=TimeCapsConf(T_idle_max_minutes=cfg.T_idle_max_minutes, p_idle=cfg.p_idle,
                            T_total_cap_minutes=cfg.T_total_cap_minutes, p_exit_min=cfg.p_exit_min),
                            scalp=ScalpModeConf(**cfg.scalp),
+        micro=MicroOscillationConf(**cfg.micro),
         btd=BuyTheDipConf(**cfg.btd), sah=SellAtHeightConf(**cfg.sah),
         adaptive=AdaptiveLadderConf(**cfg.adaptive_ladder),
         anchor=AnchorDriftConf(**cfg.anchor_drift),

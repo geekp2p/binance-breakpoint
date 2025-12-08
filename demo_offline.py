@@ -67,7 +67,7 @@ def main(
         T_idle_max_minutes=45, p_idle=0.004,
         T_total_cap_minutes=180, p_exit_min=0.004,
         snapshot_every_bars=1, use_maker=True,
-        scalp={"enabled": False}, btd={"enabled": False}, sah={"enabled": False},
+        scalp={"enabled": False}, micro={"enabled": False}, btd={"enabled": False}, sah={"enabled": False},
         adaptive_ladder={"enabled": True}, anchor_drift={"enabled": True}
     )
     res = run_backtest_for_pair(df, cfg)

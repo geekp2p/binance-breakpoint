@@ -66,6 +66,17 @@ pairs:
         volatility_ref_pct: 0.04
         scale_strength: 0.6
         order_pct_allocation: 0.33
+      micro_oscillation:
+        enabled: false
+        window: 30
+        max_band_pct: 0.006
+        min_swings: 4
+        min_swing_pct: 0.0008
+        entry_band_pct: 0.15
+        take_profit_pct: 0.0025
+        stop_break_pct: 0.005
+        order_pct_allocation: 0.15
+        cooldown_bars: 5
       buy_the_dip:
         # เปิดซื้อดักหลุดบันได (dip) แยกจาก n_steps หลัก
         enabled: true
@@ -176,6 +187,17 @@ pairs:
         volatility_ref_pct: 0.04
         scale_strength: 0.6
         order_pct_allocation: 0.33
+      micro_oscillation:
+        enabled: false
+        window: 30
+        max_band_pct: 0.006
+        min_swings: 4
+        min_swing_pct: 0.0008
+        entry_band_pct: 0.15
+        take_profit_pct: 0.0025
+        stop_break_pct: 0.005
+        order_pct_allocation: 0.15
+        cooldown_bars: 5
       buy_the_dip:
         # เปิดซื้อดักหลุดบันได (dip) แยกจาก n_steps หลัก
         enabled: true
@@ -286,6 +308,17 @@ pairs:
         volatility_ref_pct: 0.04
         scale_strength: 0.6
         order_pct_allocation: 0.33
+      micro_oscillation:
+        enabled: false
+        window: 30
+        max_band_pct: 0.006
+        min_swings: 4
+        min_swing_pct: 0.0008
+        entry_band_pct: 0.15
+        take_profit_pct: 0.0025
+        stop_break_pct: 0.005
+        order_pct_allocation: 0.15
+        cooldown_bars: 5
       buy_the_dip:
         # เปิดซื้อดักหลุดบันได (dip) แยกจาก n_steps หลัก
         enabled: true
@@ -396,6 +429,17 @@ pairs:
         volatility_ref_pct: 0.04
         scale_strength: 0.6
         order_pct_allocation: 0.33
+      micro_oscillation:
+        enabled: false
+        window: 30
+        max_band_pct: 0.006
+        min_swings: 4
+        min_swing_pct: 0.0008
+        entry_band_pct: 0.15
+        take_profit_pct: 0.0025
+        stop_break_pct: 0.005
+        order_pct_allocation: 0.15
+        cooldown_bars: 5
       buy_the_dip:
         # เปิดซื้อดักหลุดบันได (dip) แยกจาก n_steps หลัก
         enabled: true

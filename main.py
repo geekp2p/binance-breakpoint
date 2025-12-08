@@ -52,6 +52,7 @@ def run(cfg_path, out_dir):
             btd=pc.get("features",{}).get("buy_the_dip", {"enabled": False}),
             sah=pc.get("features",{}).get("sell_at_height", {"enabled": False}),
             scalp=pc.get("features",{}).get("scalp_mode", {"enabled": False}),
+            micro=pc.get("features",{}).get("micro_oscillation", {"enabled": False}),
             adaptive_ladder=pc.get("features",{}).get("adaptive_ladder", {"enabled": False}),
             anchor_drift=pc.get("features",{}).get("anchor_drift", {"enabled": False}),
         )
