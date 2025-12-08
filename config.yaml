@@ -300,7 +300,7 @@ pairs:
         min_displacement_pct: 0.005
         cooldown_bars: 20
     plotting: { enable: true }
-	
+
   - symbol: BNBUSDT
     quote: USDT
     b_alloc: 7777.0
