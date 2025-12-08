@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Binance Breakpoint - Profit & Control</title>
+  <style>
+    :root {
+      color-scheme: dark light;
+      --accent: #2d8cf0;
+      --danger: #f44336;
+      --success: #4caf50;
+      --bg: #0f172a;
+      --surface: #1e293b;
+      --text: #e2e8f0;
+      --muted: #94a3b8;
+      font-family: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+    }
+
+    body {
+      margin: 0;
+      background: linear-gradient(135deg, rgba(45, 140, 240, 0.15), rgba(15, 23, 42, 0.9));
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    .page {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 28px 20px 48px;
+    }
+
+    header {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 20px;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 1.5rem;
+      letter-spacing: 0.01em;
+    }
+
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .input {
+      background: var(--surface);
+      border: 1px solid #334155;
+      color: var(--text);
+      padding: 8px 10px;
+      border-radius: 8px;
+      min-width: 260px;
+    }
+
+    button {
+      border: none;
+      border-radius: 8px;
+      padding: 9px 14px;
+      cursor: pointer;
+      font-weight: 600;
+      color: #fff;
+      background: var(--accent);
+      box-shadow: 0 8px 30px rgba(45, 140, 240, 0.25);
+      transition: transform 120ms ease, box-shadow 120ms ease, filter 120ms ease;
+    }
+
+    button:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 10px 40px rgba(45, 140, 240, 0.35);
+      filter: brightness(1.05);
+    }
+
+    button:active {
+      transform: translateY(0);
+      box-shadow: 0 6px 20px rgba(45, 140, 240, 0.25);
+    }
+
+    .btn-secondary {
+      background: #475569;
+      box-shadow: none;
+    }
+
+    .btn-danger {
+      background: var(--danger);
+      box-shadow: none;
+    }
+
+    .card-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+      gap: 14px;
+      margin-bottom: 18px;
+    }
+
+    .card {
+      background: rgba(30, 41, 59, 0.9);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      border-radius: 12px;
+      padding: 14px 16px;
+      backdrop-filter: blur(8px);
+      box-shadow: 0 16px 50px rgba(0, 0, 0, 0.35);
+    }
+
+    .card h3 {
+      margin: 0 0 6px;
+      font-size: 0.95rem;
+      color: var(--muted);
+      font-weight: 600;
+      letter-spacing: 0.02em;
+    }
+
+    .value {
+      font-size: 1.4rem;
+      font-weight: 700;
+    }
+
+    .pill {
+      display: inline-block;
+      padding: 4px 8px;
+      border-radius: 999px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      background: #0f172a;
+      color: var(--muted);
+      border: 1px solid #1e293b;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: rgba(15, 23, 42, 0.7);
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 16px 40px rgba(0, 0, 0, 0.25);
+    }
+
+    thead {
+      background: rgba(30, 41, 59, 0.8);
+      color: var(--muted);
+      text-transform: uppercase;
+      font-size: 0.78rem;
+      letter-spacing: 0.04em;
+    }
+
+    th, td {
+      padding: 12px 10px;
+      text-align: left;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      vertical-align: middle;
+    }
+
+    tbody tr:hover {
+      background: rgba(45, 140, 240, 0.04);
+    }
+
+    .status {
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-weight: 700;
+      font-size: 0.78rem;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+      display: inline-block;
+    }
+
+    .status.live { background: rgba(76, 175, 80, 0.15); color: var(--success); }
+    .status.paused { background: rgba(244, 67, 54, 0.15); color: var(--danger); }
+
+    .pnl-pos { color: var(--success); }
+    .pnl-neg { color: var(--danger); }
+    .muted { color: var(--muted); font-size: 0.92rem; }
+
+    .footer {
+      margin-top: 16px;
+      color: var(--muted);
+      font-size: 0.88rem;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      align-items: center;
+    }
+
+    .error {
+      margin-top: 12px;
+      color: var(--danger);
+      font-weight: 600;
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header>
+      <h1>Binance Breakpoint – PnL & Control</h1>
+      <div class="controls">
+        <input id="apiBase" class="input" type="text" value="http://45.154.25.16:8080" aria-label="API base URL" />
+        <label style="display:flex;align-items:center;gap:6px;color:var(--muted);font-weight:600;">
+          <input id="useProxy" type="checkbox" />
+          Use CORS proxy
+        </label>
+        <button id="refresh">Refresh</button>
+        <button id="pauseAll" class="btn-danger">Pause all</button>
+        <button id="resumeAll" class="btn-secondary">Resume all</button>
+      </div>
+    </header>
+
+    <div id="meta" class="muted">Waiting for data...</div>
+    <div class="error" id="error" hidden></div>
+
+    <div class="card-grid">
+      <div class="card">
+        <h3>Realized PnL</h3>
+        <div class="value" id="realized">-</div>
+        <div class="pill" id="realizedCount">0 pairs</div>
+      </div>
+      <div class="card">
+        <h3>Unrealized PnL</h3>
+        <div class="value" id="unrealized">-</div>
+        <div class="pill" id="unrealizedCount">0 pairs</div>
+      </div>
+      <div class="card">
+        <h3>Paused pairs</h3>
+        <div class="value" id="pausedCount">0</div>
+        <div class="pill" id="totalCount">0 pairs total</div>
+      </div>
+      <div class="card">
+        <h3>Total quote used</h3>
+        <div class="value" id="quoteSpent">-</div>
+        <div class="pill" id="ladderInfo">-</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div style="overflow-x: auto;">
+        <table>
+          <thead>
+            <tr>
+              <th>Symbol</th>
+              <th>Phase</th>
+              <th>Price</th>
+              <th>Position (Qty)</th>
+              <th>Avg</th>
+              <th>Unrealized</th>
+              <th>Realized Total</th>
+              <th>Next (Buy/Sell)</th>
+              <th>Ladder</th>
+              <th>Status</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="footer">
+      <span class="pill">Data from /health</span>
+      <span id="lastUpdated">-</span>
+    </div>
+  </div>
+
+  <script>
+    const apiBaseEl = document.getElementById("apiBase");
+    const rowsEl = document.getElementById("rows");
+    const errorEl = document.getElementById("error");
+    const metaEl = document.getElementById("meta");
+    const proxyToggle = document.getElementById("useProxy");
+    const proxyPrefKey = "bb_use_proxy";
+
+    function fmtNumber(value, digits = 2) {
+      if (value === null || value === undefined || Number.isNaN(value)) return "-";
+      const abs = Math.abs(value);
+      const d = abs >= 1000 ? 2 : digits;
+      return Number(value).toLocaleString(undefined, { minimumFractionDigits: d, maximumFractionDigits: d });
+    }
+
+    function sum(values) {
+      return values.reduce((acc, v) => acc + (typeof v === "number" ? v : 0), 0);
+    }
+
+    function apiUrl(path) {
+      const base = apiBaseEl.value.replace(/\/$/, "");
+      const useProxy = proxyToggle?.checked;
+      const full = `${base}${path}`;
+      return useProxy ? `https://cors.isomorphic-git.org/${full}` : full;
+    }
+
+    async function postCommand(path) {
+      const resp = await fetch(apiUrl(path), { method: "POST" });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      return resp.json();
+    }
+
+    async function fetchHealth({ retriedWithProxy = false } = {}) {
+      errorEl.hidden = true;
+      metaEl.textContent = "Loading data...";
+      try {
+        const resp = await fetch(apiUrl("/health"));
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const data = await resp.json();
+        render(data);
+      } catch (err) {
+        console.error(err);
+        if (shouldAutoEnableProxy({ retriedWithProxy })) {
+          proxyToggle.checked = true;
+          persistProxyPref();
+          return fetchHealth({ retriedWithProxy: true });
+        }
+        const proxyHint = proxyToggle?.checked
+          ? "CORS proxy is enabled but the request still failed."
+          : "If loading from a local file, enable the CORS proxy toggle.";
+        errorEl.textContent = `Failed to fetch data: ${err.message}. ${proxyHint}`;
+        errorEl.hidden = false;
+        metaEl.textContent = "Error";
+      }
+    }
+
+    function shouldAutoEnableProxy({ retriedWithProxy }) {
+      const isFile = window.location.protocol === "file:";
+      return isFile && !retriedWithProxy && proxyToggle && !proxyToggle.checked;
+    }
+
+    function loadProxyPref() {
+      const raw = window.localStorage.getItem(proxyPrefKey);
+      if (raw === null) {
+        proxyToggle.checked = window.location.protocol === "file:";
+        return;
+      }
+      proxyToggle.checked = raw === "true";
+    }
+
+    function persistProxyPref() {
+      if (!proxyToggle) return;
+      window.localStorage.setItem(proxyPrefKey, String(proxyToggle.checked));
+    }
+
+    function render(data) {
+      const pairs = data.pairs || {};
+      const entries = Object.entries(pairs);
+      const now = new Date().toLocaleString();
+      document.getElementById("lastUpdated").textContent = `Last updated: ${now}`;
+      metaEl.textContent = `${entries.length} pairs | status: ${data.status}`;
+
+      const unrealizedList = entries.map(([, v]) => v.unrealized_pnl).filter((v) => v !== null && v !== undefined);
+      const realizedList = entries.map(([, v]) => v.realized_pnl_total).filter((v) => v !== null && v !== undefined);
+      const quoteSpent = sum(entries.map(([, v]) => v.quote_spent));
+      const paused = entries.filter(([, v]) => v.paused).length;
+      const ladderInfo = entries.map(([, v]) => v.ladder_total || 0);
+
+      const unrealized = sum(unrealizedList);
+      const realized = sum(realizedList);
+      document.getElementById("unrealized").innerHTML = formatPnl(unrealized);
+      document.getElementById("unrealizedCount").textContent = `${unrealizedList.length} pairs with position`;
+      document.getElementById("realized").innerHTML = formatPnl(realized);
+      document.getElementById("realizedCount").textContent = `${realizedList.length} pairs with realized PnL`;
+      document.getElementById("pausedCount").textContent = paused;
+      document.getElementById("totalCount").textContent = `${entries.length} pairs total`;
+      document.getElementById("quoteSpent").textContent = `${fmtNumber(quoteSpent, 2)} USDT`;
+      document.getElementById("ladderInfo").textContent = `Max ladder steps: ${Math.max(0, ...ladderInfo)}`;
+
+      rowsEl.innerHTML = entries
+        .map(([symbol, v]) => {
+          const statusClass = v.paused ? "paused" : "live";
+          const statusText = v.paused ? "Paused" : "Live";
+          const unrealizedCell = v.unrealized_pnl === null ? "-" : formatPnl(v.unrealized_pnl);
+          const nextSell = v.next_sell_price ? fmtNumber(v.next_sell_price) : "-";
+          const nextBuy = v.next_buy_price ? fmtNumber(v.next_buy_price) : "-";
+          const ladder = `${v.ladder_index + 1}/${v.ladder_total}`;
+          const actionLabel = v.paused ? "Resume" : "Pause";
+          const actionClass = v.paused ? "btn-secondary" : "btn-danger";
+
+          return `
+            <tr>
+              <td><strong>${symbol}</strong><div class="muted">${v.timestamp ?? ""}</div></td>
+              <td>${v.phase || "-"}</td>
+              <td>${fmtNumber(v.price)}</td>
+              <td>${fmtNumber(v.qty, 6)}<div class="muted">Spent ${fmtNumber(v.quote_spent)} quote</div></td>
+              <td>${v.avg_price ? fmtNumber(v.avg_price) : "-"}</td>
+              <td class="${pnlClass(v.unrealized_pnl)}">${unrealizedCell}</td>
+              <td class="${pnlClass(v.realized_pnl_total)}">${formatPnl(v.realized_pnl_total)}</td>
+              <td><div class="muted">Buy: ${nextBuy}</div><div class="muted">Sell: ${nextSell}</div></td>
+              <td>${ladder}</td>
+              <td><span class="status ${statusClass}">${statusText}</span></td>
+              <td><button class="${actionClass}" data-symbol="${symbol}" data-paused="${v.paused}">${actionLabel}</button></td>
+            </tr>`;
+        })
+        .join("");
+    }
+
+    function pnlClass(val) {
+      if (val === null || val === undefined) return "muted";
+      return val >= 0 ? "pnl-pos" : "pnl-neg";
+    }
+
+    function formatPnl(val) {
+      if (val === null || val === undefined) return "-";
+      const cls = val >= 0 ? "pnl-pos" : "pnl-neg";
+      return `<span class="${cls}">${fmtNumber(val, 2)}</span>`;
+    }
+
+    rowsEl.addEventListener("click", async (ev) => {
+      const btn = ev.target.closest("button[data-symbol]");
+      if (!btn) return;
+      const symbol = btn.dataset.symbol;
+      const paused = btn.dataset.paused === "true";
+      btn.disabled = true;
+      btn.textContent = paused ? "Resuming..." : "Pausing...";
+      try {
+        await postCommand(paused ? `/resume?symbol=${symbol}` : `/pause?symbol=${symbol}`);
+        await fetchHealth();
+      } catch (err) {
+        alert(`Command failed: ${err.message}`);
+      } finally {
+        btn.disabled = false;
+      }
+    });
+
+    document.getElementById("pauseAll").addEventListener("click", async () => {
+      try {
+        await postCommand("/pause");
+        await fetchHealth();
+      } catch (err) {
+        alert(`Pause failed: ${err.message}`);
+      }
+    });
+
+    document.getElementById("resumeAll").addEventListener("click", async () => {
+      try {
+        await postCommand("/resume");
+        await fetchHealth();
+      } catch (err) {
+        alert(`Resume failed: ${err.message}`);
+      }
+    });
+
+    document.getElementById("refresh").addEventListener("click", () => fetchHealth());
+    proxyToggle?.addEventListener("change", () => {
+      persistProxyPref();
+      fetchHealth();
+    });
+
+    loadProxyPref();
+    fetchHealth();
+    setInterval(() => fetchHealth(), 10000);
+  </script>
+</body>
+</html>

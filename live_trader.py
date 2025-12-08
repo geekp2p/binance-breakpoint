@@ -148,6 +148,7 @@ def create_http_handler(control: ControlCenter):
         def _json(self, code: int, payload: Dict[str, object]) -> None:
             body = json.dumps(payload, ensure_ascii=False).encode()
             self.send_response(code)
+            self._set_cors_headers()
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
@@ -155,6 +156,11 @@ def create_http_handler(control: ControlCenter):
 
         def log_message(self, format: str, *args) -> None:  # noqa: A003
             return
+
+        def _set_cors_headers(self) -> None:
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+            self.send_header("Access-Control-Allow-Headers", "Content-Type")
 
         def do_GET(self) -> None:  # noqa: N802
             parsed = urlparse(self.path)
@@ -179,6 +185,11 @@ def create_http_handler(control: ControlCenter):
                 self._json(200, {"status": "resumed", "pairs": affected})
                 return
             self._json(404, {"error": "not found"})
+
+        def do_OPTIONS(self) -> None:  # noqa: N802
+            self.send_response(204)
+            self._set_cors_headers()
+            self.end_headers()
 
     return Handler
 
