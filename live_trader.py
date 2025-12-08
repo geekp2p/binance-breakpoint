@@ -4,12 +4,15 @@ import json
 import logging
 import os
 import time
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional
 
 import requests
+from urllib.parse import parse_qs, urlparse
 
 from main import load_config
 from src.backtester import PairConfig, init_state_from_config, prepare_ladder
@@ -98,6 +101,99 @@ def reset_round(state, price: float, ts: datetime) -> None:
     prepare_ladder(state, price)
 
 
+class ControlCenter:
+    def __init__(self, symbols: List[str]):
+        self._lock = threading.Lock()
+        self._status: Dict[str, Dict[str, object]] = {sym: {} for sym in symbols}
+        self._paused: Dict[str, threading.Event] = {sym: threading.Event() for sym in symbols}
+
+    def snapshot(self) -> Dict[str, Dict[str, object]]:
+        with self._lock:
+            return {
+                sym: {**status, "paused": self._paused[sym].is_set()}
+                for sym, status in self._status.items()
+            }
+
+    def update_status(self, symbol: str, status: Dict[str, object]) -> None:
+        with self._lock:
+            self._status[symbol] = dict(status)
+
+    def pause(self, symbol: Optional[str] = None) -> List[str]:
+        targets = [symbol] if symbol else list(self._paused.keys())
+        paused = []
+        for sym in targets:
+            ev = self._paused.get(sym)
+            if ev:
+                ev.set()
+                paused.append(sym)
+        return paused
+
+    def resume(self, symbol: Optional[str] = None) -> List[str]:
+        targets = [symbol] if symbol else list(self._paused.keys())
+        resumed = []
+        for sym in targets:
+            ev = self._paused.get(sym)
+            if ev:
+                ev.clear()
+                resumed.append(sym)
+        return resumed
+
+    def is_paused(self, symbol: str) -> bool:
+        ev = self._paused.get(symbol)
+        return bool(ev and ev.is_set())
+
+
+def create_http_handler(control: ControlCenter):
+    class Handler(BaseHTTPRequestHandler):
+        def _json(self, code: int, payload: Dict[str, object]) -> None:
+            body = json.dumps(payload, ensure_ascii=False).encode()
+            self.send_response(code)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, format: str, *args) -> None:  # noqa: A003
+            return
+
+        def do_GET(self) -> None:  # noqa: N802
+            parsed = urlparse(self.path)
+            if parsed.path == "/health":
+                payload = {"status": "ok", "pairs": control.snapshot()}
+                self._json(200, payload)
+                return
+            self._json(404, {"error": "not found"})
+
+        def do_POST(self) -> None:  # noqa: N802
+            parsed = urlparse(self.path)
+            params = parse_qs(parsed.query)
+            symbol = (params.get("symbol") or [None])[0]
+            if symbol:
+                symbol = symbol.upper()
+            if parsed.path == "/pause":
+                affected = control.pause(symbol)
+                self._json(200, {"status": "paused", "pairs": affected})
+                return
+            if parsed.path == "/resume":
+                affected = control.resume(symbol)
+                self._json(200, {"status": "resumed", "pairs": affected})
+                return
+            self._json(404, {"error": "not found"})
+
+    return Handler
+
+
+def start_http_server(control: ControlCenter, port: int) -> Optional[ThreadingHTTPServer]:
+    if port <= 0:
+        return None
+    handler = create_http_handler(control)
+    httpd = ThreadingHTTPServer(("", port), handler)
+    thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+    thread.start()
+    logging.info("Control server listening on http://0.0.0.0:%s", port)
+    return httpd
+
+
 def fetch_previous_closed(symbol: str, interval: str, base_url: str) -> Optional[Dict[str, float]]:
     url = f"{base_url.rstrip('/')}/api/v3/klines"
     resp = requests.get(url, params={"symbol": symbol, "interval": interval, "limit": 2}, timeout=15)
@@ -134,6 +230,12 @@ def main() -> None:
             "with SAVEPOINT_DIR environment variable"
         ),
     )
+    parser.add_argument(
+        "--http-port",
+        type=int,
+        default=8080,
+        help="Port for health/pause/resume server (set 0 to disable)",
+    )
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -155,6 +257,7 @@ def main() -> None:
     def run_pair(pair_raw: Dict) -> None:
         pair_cfg = build_pair_config(pair_raw, general)
         state = init_state_from_config(pair_cfg)
+        pair_symbol = pair_cfg.symbol.upper()
 
         latest = fetch_previous_closed(pair_cfg.symbol, pair_cfg.interval, base_url)
         if latest is None:
@@ -450,6 +553,15 @@ def main() -> None:
                 "realized_pnl_total": realized_pnl_total,
             }
 
+        def serialise_status(status: Dict[str, object]) -> Dict[str, object]:
+            serialised: Dict[str, object] = {}
+            for key, val in status.items():
+                if isinstance(val, datetime):
+                    serialised[key] = val.isoformat()
+                else:
+                    serialised[key] = val
+            return serialised
+
         def log_status(status: Dict[str, object]) -> None:
             parts = [
                 f"price={status['price']:.4f}",
@@ -476,6 +588,8 @@ def main() -> None:
 
         startup_status = build_status_snapshot(latest["close"], latest["timestamp"])
         log_status(startup_status)
+        last_status = serialise_status(startup_status)
+        control.update_status(pair_symbol, last_status)
         write_savepoint(
             savepoint_dir,
             pair_cfg.symbol,
@@ -490,6 +604,12 @@ def main() -> None:
 
         while True:
             try:
+                if control.is_paused(pair_symbol):
+                    paused_status = {**last_status, "note": "paused"}
+                    last_status = paused_status
+                    control.update_status(pair_symbol, paused_status)
+                    time.sleep(args.poll_seconds)
+                    continue
                 kline = fetch_previous_closed(pair_cfg.symbol, pair_cfg.interval, base_url)
                 if not kline:
                     time.sleep(args.poll_seconds)
@@ -657,6 +777,8 @@ def main() -> None:
                 last_open_time = kline["open_time"]
                 status_snapshot = build_status_snapshot(kline["close"], ts)
                 log_status(status_snapshot)
+                last_status = serialise_status(status_snapshot)
+                control.update_status(pair_symbol, last_status)
                 write_savepoint(
                     savepoint_dir,
                     pair_cfg.symbol,
@@ -682,6 +804,9 @@ def main() -> None:
     selected_pairs = [p for p in pairs_raw if symbol_filter is None or p["symbol"].upper() == symbol_filter]
     if not selected_pairs:
         raise SystemExit(f"Symbol {symbol_filter} not found in config")
+
+    control = ControlCenter([p["symbol"].upper() for p in selected_pairs])
+    start_http_server(control, args.http_port)
 
     with ThreadPoolExecutor(max_workers=len(selected_pairs)) as executor:
         futures = [executor.submit(run_pair, pair_raw) for pair_raw in selected_pairs]
