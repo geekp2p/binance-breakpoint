@@ -6,16 +6,28 @@ api:
 pairs:
   - symbol: ZECUSDT
     quote: USDT
-    b_alloc: 6666.0
+    b_alloc: 7777.0
     source: binance
     interval: 1m
     lookback_days: 2
     fees: { taker: 0.001, maker: 0.001 }
 
-    # - d_buy: ระยะห่างเริ่มต้นของขั้นแรก (ใช้ร่วมกับ spacing_mode)
-    # - spacing_mode: "fibo" = เว้นช่วงลึกขึ้นตาม Fibonacci, "geometric" = คงที่
-    # - n_steps: จำนวนขั้นสูงสุดในรอบสะสมหลัก (ตั้ง 10 ให้ลงลึกแบบ fibo)
-    buy_ladder: { d_buy: 0.015, m_buy: 1.5, n_steps: 10, spacing_mode: fibo, max_step_drop: 0.25 }
+    # บันไดสะสมหลัก (Martingale)
+    # - d_buy: ระยะห่างแต่ละขั้น (เริ่ม 3%)
+    # - m_buy: ตัวคูณขนาดไม้เมื่อถอยลง
+    # - n_steps: จำนวนขั้นสูงสุดในรอบสะสมหลัก
+    buy_ladder:
+      d_buy: 0.015
+      m_buy: 1.5
+      n_steps: 10
+      spacing_mode: fibo
+      size_mode: fibonacci
+      gap_mode: multiplicative
+      gap_factor: 1.05
+      max_step_drop: 0.25
+      base_order_quote: 0.0
+      max_quote_per_leg: 0.0
+      max_total_quote: 0.0
 
     profit_trail:
       p_min: 0.02
@@ -54,6 +66,17 @@ pairs:
         volatility_ref_pct: 0.04
         scale_strength: 0.6
         order_pct_allocation: 0.33
+      micro_oscillation:
+        enabled: false
+        window: 30
+        max_band_pct: 0.006
+        min_swings: 4
+        min_swing_pct: 0.0008
+        entry_band_pct: 0.15
+        take_profit_pct: 0.0025
+        stop_break_pct: 0.005
+        order_pct_allocation: 0.15
+        cooldown_bars: 5
       buy_the_dip:
         # เปิดซื้อดักหลุดบันได (dip) แยกจาก n_steps หลัก
         enabled: true
@@ -110,10 +133,22 @@ pairs:
     lookback_days: 2
     fees: { taker: 0.001, maker: 0.001 }
 
-    # - d_buy: ระยะห่างเริ่มต้นของขั้นแรก (ใช้ร่วมกับ spacing_mode)
-    # - spacing_mode: "fibo" = เว้นช่วงลึกขึ้นตาม Fibonacci, "geometric" = คงที่
-    # - n_steps: จำนวนขั้นสูงสุดในรอบสะสมหลัก (ตั้ง 10 ให้ลงลึกแบบ fibo)
-    buy_ladder: { d_buy: 0.015, m_buy: 1.5, n_steps: 10, spacing_mode: fibo, max_step_drop: 0.25 }
+    # บันไดสะสมหลัก (Martingale)
+    # - d_buy: ระยะห่างแต่ละขั้น (เริ่ม 3%)
+    # - m_buy: ตัวคูณขนาดไม้เมื่อถอยลง
+    # - n_steps: จำนวนขั้นสูงสุดในรอบสะสมหลัก
+    buy_ladder:
+      d_buy: 0.015
+      m_buy: 1.5
+      n_steps: 10
+      spacing_mode: fibo
+      size_mode: fibonacci
+      gap_mode: multiplicative
+      gap_factor: 1.05
+      max_step_drop: 0.25
+      base_order_quote: 0.0
+      max_quote_per_leg: 0.0
+      max_total_quote: 0.0
 
     profit_trail:
       p_min: 0.02
@@ -152,6 +187,17 @@ pairs:
         volatility_ref_pct: 0.04
         scale_strength: 0.6
         order_pct_allocation: 0.33
+      micro_oscillation:
+        enabled: false
+        window: 30
+        max_band_pct: 0.006
+        min_swings: 4
+        min_swing_pct: 0.0008
+        entry_band_pct: 0.15
+        take_profit_pct: 0.0025
+        stop_break_pct: 0.005
+        order_pct_allocation: 0.15
+        cooldown_bars: 5
       buy_the_dip:
         # เปิดซื้อดักหลุดบันได (dip) แยกจาก n_steps หลัก
         enabled: true
@@ -202,7 +248,7 @@ pairs:
 
   - symbol: DGBUSDT
     quote: USDT
-    b_alloc: 7777.0
+    b_alloc: 5555.0
     source: binance
     interval: 1m
     lookback_days: 2
@@ -212,7 +258,18 @@ pairs:
     # - d_buy: ระยะห่างแต่ละขั้น (เริ่ม 3%)
     # - m_buy: ตัวคูณขนาดไม้เมื่อถอยลง
     # - n_steps: จำนวนขั้นสูงสุดในรอบสะสมหลัก
-    buy_ladder: { d_buy: 0.03, m_buy: 1.5, n_steps: 3 }
+    buy_ladder:
+      d_buy: 0.015
+      m_buy: 1.5
+      n_steps: 10
+      spacing_mode: fibo
+      size_mode: fibonacci
+      gap_mode: multiplicative
+      gap_factor: 1.05
+      max_step_drop: 0.25
+      base_order_quote: 0.0
+      max_quote_per_leg: 0.0
+      max_total_quote: 0.0
 
     profit_trail:
       p_min: 0.02
@@ -251,6 +308,17 @@ pairs:
         volatility_ref_pct: 0.04
         scale_strength: 0.6
         order_pct_allocation: 0.33
+      micro_oscillation:
+        enabled: false
+        window: 30
+        max_band_pct: 0.006
+        min_swings: 4
+        min_swing_pct: 0.0008
+        entry_band_pct: 0.15
+        take_profit_pct: 0.0025
+        stop_break_pct: 0.005
+        order_pct_allocation: 0.15
+        cooldown_bars: 5
       buy_the_dip:
         # เปิดซื้อดักหลุดบันได (dip) แยกจาก n_steps หลัก
         enabled: true
@@ -298,10 +366,10 @@ pairs:
         min_displacement_pct: 0.005
         cooldown_bars: 20
     plotting: { enable: true }
-	
+
   - symbol: BNBUSDT
     quote: USDT
-    b_alloc: 7777.0
+    b_alloc: 3333.0
     source: binance
     interval: 1m
     lookback_days: 2
@@ -311,7 +379,18 @@ pairs:
     # - d_buy: ระยะห่างแต่ละขั้น (เริ่ม 3%)
     # - m_buy: ตัวคูณขนาดไม้เมื่อถอยลง
     # - n_steps: จำนวนขั้นสูงสุดในรอบสะสมหลัก
-    buy_ladder: { d_buy: 0.03, m_buy: 1.5, n_steps: 3 }
+    buy_ladder:
+      d_buy: 0.015
+      m_buy: 1.5
+      n_steps: 10
+      spacing_mode: fibo
+      size_mode: fibonacci
+      gap_mode: multiplicative
+      gap_factor: 1.05
+      max_step_drop: 0.25
+      base_order_quote: 0.0
+      max_quote_per_leg: 0.0
+      max_total_quote: 0.0
 
     profit_trail:
       p_min: 0.02
@@ -350,6 +429,17 @@ pairs:
         volatility_ref_pct: 0.04
         scale_strength: 0.6
         order_pct_allocation: 0.33
+      micro_oscillation:
+        enabled: false
+        window: 30
+        max_band_pct: 0.006
+        min_swings: 4
+        min_swing_pct: 0.0008
+        entry_band_pct: 0.15
+        take_profit_pct: 0.0025
+        stop_break_pct: 0.005
+        order_pct_allocation: 0.15
+        cooldown_bars: 5
       buy_the_dip:
         # เปิดซื้อดักหลุดบันได (dip) แยกจาก n_steps หลัก
         enabled: true
