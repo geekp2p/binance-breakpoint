@@ -384,7 +384,7 @@
           const nextBuy = v.next_buy_price ? fmtNumber(v.next_buy_price) : "-";
           const ladder =
             typeof v.ladder_index === "number" && typeof v.ladder_total === "number"
-              ? `${v.ladder_index + 1}/${v.ladder_total}`
+              ? `${Math.min(v.ladder_index, v.ladder_total)}/${v.ladder_total}`
               : "-";
           const actionLabel = v.paused ? "Resume" : "Pause";
           const actionClass = v.paused ? "btn-secondary" : "btn-danger";

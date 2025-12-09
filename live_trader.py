@@ -623,6 +623,11 @@ def main() -> None:
                 if state.ladder_next_idx < len(state.ladder_amounts_quote)
                 else None
             )
+            ladder_total = len(state.ladder_prices)
+            ladder_progress = state.ladder_next_idx
+            if net_qty <= 0 and net_cost <= 0:
+                ladder_progress = 0
+            ladder_progress = min(max(ladder_progress, 0), ladder_total)
             next_sell_target = None
             if state.Q > 0:
                 if state.phase == PHASE_TRAIL:
@@ -644,8 +649,8 @@ def main() -> None:
                 "next_buy_price": next_buy,
                 "next_buy_quote": next_buy_quote,
                 "next_sell_price": next_sell_target,
-                "ladder_index": state.ladder_next_idx,
-                "ladder_total": len(state.ladder_prices),
+                "ladder_index": ladder_progress,
+                "ladder_total": ladder_total,
                 "unrealized_pnl": unrealized_pnl,
                 "realized_pnl_total": realized_pnl_total,
             }
