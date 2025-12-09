@@ -6,3 +6,7 @@ python -m compileall src tests
 docker compose build backtest demo live
 
 docker compose up live
+
+docker compose build backtest
+
+docker compose up backtest

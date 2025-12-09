@@ -92,6 +92,11 @@
       return a;
     }
 
+    const apiBase = (window.BACKTEST_API_BASE || '').trim() ||
+      (window.location.origin && window.location.origin !== 'null'
+        ? window.location.origin
+        : 'http://localhost:8181');
+
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
       const usdt = Number(document.getElementById('usdt').value || 0);
@@ -107,7 +112,7 @@
       resultsTableBody.innerHTML = '';
       downloads.innerHTML = '';
       try {
-        const resp = await fetch('http://localhost:8181/backtest', {
+        const resp = await fetch(`${apiBase.replace(/\/$/, '')}/backtest`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body)
