@@ -151,6 +151,28 @@ def run_backtest_for_pair(df: pd.DataFrame, cfg: PairConfig)->Dict[str, Any]:
                     "pnl": None,
                     "reason": "BUY_THE_DIP"
                 })
+            elif ev.get("event") == "MICRO_BUY":
+                trades.append({
+                    "ts": ev["ts"],
+                    "side": "BUY",
+                    "tag": "MICRO",
+                    "price": ev.get("price"),
+                    "qty": ev.get("qty"),
+                    "notional": ev.get("order_quote"),
+                    "pnl": None,
+                    "reason": "MICRO_BUY",
+                })
+            elif ev.get("event", "").startswith("MICRO_") and ev.get("event") != "MICRO_BUY":
+                trades.append({
+                    "ts": ev["ts"],
+                    "side": "SELL",
+                    "tag": ev.get("event"),
+                    "price": ev.get("price"),
+                    "qty": ev.get("qty"),
+                    "notional": ev.get("proceeds"),
+                    "pnl": ev.get("pnl"),
+                    "reason": ev.get("event"),
+                })                
             elif ev.get("event") == "SCALP_BUY":
                 trades.append({
                     "ts": ev["ts"],
@@ -191,7 +213,10 @@ def run_backtest_for_pair(df: pd.DataFrame, cfg: PairConfig)->Dict[str, Any]:
                                 "phase": state.phase, "stage": state.stage, "H": state.H, "F": F,
                                 "tau": state.tau_cur, "p_lock": state.p_lock_cur,
                                 "next_ladder_idx": state.ladder_next_idx+1, "TP_base": state.TP_base,
-                                "btd_armed": state.btd_armed, "sah_armed": state.sah_armed})
+                                "btd_armed": state.btd_armed, "sah_armed": state.sah_armed,
+                                "micro_positions": len(state.micro_positions),
+                                "micro_swings": state.micro_swings,
+                                "micro_cooldown": state.micro_cooldown_until_bar})
         bar_count += 1
         if res is not None:
             qty = res.get("qty")
@@ -217,6 +242,8 @@ def run_backtest_for_pair(df: pd.DataFrame, cfg: PairConfig)->Dict[str, Any]:
         "btd_orders": int((evdf["event"]=="BTD_ORDER").sum()) if not evdf.empty else 0,
         "scalp_buys": int((evdf["event"]=="SCALP_BUY").sum()) if not evdf.empty else 0,
         "scalp_tps": int((evdf["event"]=="SCALP_TP").sum()) if not evdf.empty else 0,
+        "micro_buys": int((evdf["event"]=="MICRO_BUY").sum()) if not evdf.empty else 0,
+        "micro_exits": int(evdf["event"].str.startswith("MICRO_").sum() - (evdf["event"]=="MICRO_BUY").sum()) if not evdf.empty else 0,
         "sah_orders": int((evdf["event"]=="SAH_ORDER").sum()) if not evdf.empty else 0,
         "sell_reason": last_realized["reason"] if last_realized is not None else None,
         "pnl": float(last_realized["pnl"]) if last_realized is not None else 0.0,

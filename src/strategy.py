@@ -683,6 +683,18 @@ class StrategyState:
             "band_pct": snap["band_pct"],
         })
 
+        while self.ladder_next_idx < len(self.ladder_prices) and price <= self.ladder_prices[self.ladder_next_idx]:
+            self.ladder_next_idx += 1
+            log_events.append(
+                {
+                    "ts": ts,
+                    "event": "LADDER_NUDGE",
+                    "reason": "MICRO_BUY",
+                    "ladder_idx": self.ladder_next_idx,
+                    "ladder_price": self.ladder_prices[self.ladder_next_idx - 1],
+                }
+            )        
+
     def _check_micro_take_profit(self, ts, h, l, log_events: List[Dict[str, Any]]):
         if not self.micro_positions:
             return
