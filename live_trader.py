@@ -753,6 +753,12 @@ def main() -> None:
                 "profit_reserve_coin": reserves.get("profit_reserve"),
                 "bnb_reserve_for_fees": reserves.get("bnb_reserve"),
                 "fees_paid": fees,
+                "scalp_enabled": bool(state.scalp.enabled),
+                "scalp_positions": len(state.scalp_positions),
+                "micro_enabled": bool(state.micro.enabled),
+                "micro_positions": len(state.micro_positions),
+                "micro_swings": state.micro_swings,
+                "micro_cooldown_until_bar": state.micro_cooldown_until_bar,
             }
 
         def serialise_status(status: Dict[str, object]) -> Dict[str, object]:
@@ -786,6 +792,16 @@ def main() -> None:
             if status["unrealized_pnl"] is not None:
                 parts.append(f"unrealized={status['unrealized_pnl']:.2f}")
             parts.append(f"realized_total={status['realized_pnl_total']:.2f}")
+            if status.get("scalp_enabled"):
+                parts.append(f"scalp_pos={status.get('scalp_positions', 0)}")
+            if status.get("micro_enabled"):
+                parts.append(
+                    "micro_pos={pos}/swings={swings}/cd={cd}".format(
+                        pos=status.get("micro_positions", 0),
+                        swings=status.get("micro_swings", 0),
+                        cd=status.get("micro_cooldown_until_bar"),
+                    )
+                )
             profit_reserve = status.get("profit_reserve_coin") or {}
             bnb_reserve = status.get("bnb_reserve_for_fees") or {}
             fees_paid = status.get("fees_paid") or {}
