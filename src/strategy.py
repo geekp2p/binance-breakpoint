@@ -77,15 +77,15 @@ class TimeCapsConf:
 @dataclass
 class ScalpModeConf:
     enabled: bool = False
-    max_trades: int = 3
+    max_trades: int = 10
     base_drop_pct: float = 0.03
-    min_drop_pct: float = 0.015
-    max_drop_pct: float = 0.08
+    min_drop_pct: float = 0.02
+    max_drop_pct: float = 0.06
     base_take_profit_pct: float = 0.01
-    min_take_profit_pct: float = 0.006
-    max_take_profit_pct: float = 0.03
+    min_take_profit_pct: float = 0.008
+    max_take_profit_pct: float = 0.02
     volatility_ref_pct: float = 0.04
-    scale_strength: float = 0.5
+    scale_strength: float = 0.6
     order_pct_allocation: float = 0.33
 
 # --- Micro oscillation scalp ---
