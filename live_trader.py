@@ -655,6 +655,8 @@ def main() -> None:
                     next_sell_target = state.TP_base
                     if next_sell_target is None and p_be is not None:
                         next_sell_target = p_be * (1 + state.trail.p_min)
+            reserves = profit_allocator.reserves_snapshot(discount_symbol)
+            fees = profit_allocator.fees_snapshot(pair_symbol)
             return {
                 "timestamp": ts.isoformat(),
                 "price": current_price,
@@ -674,6 +676,9 @@ def main() -> None:
                 "realized_pnl": realized_pnl,
                 "pnl_total": pnl_total,
                 "realized_pnl_total": realized_pnl_total,
+                "profit_reserve_coin": reserves.get("profit_reserve"),
+                "bnb_reserve_for_fees": reserves.get("bnb_reserve"),
+                "fees_paid": fees,
             }
 
         def serialise_status(status: Dict[str, object]) -> Dict[str, object]:
@@ -707,6 +712,35 @@ def main() -> None:
             if status["unrealized_pnl"] is not None:
                 parts.append(f"unrealized={status['unrealized_pnl']:.2f}")
             parts.append(f"realized_total={status['realized_pnl_total']:.2f}")
+            profit_reserve = status.get("profit_reserve_coin") or {}
+            bnb_reserve = status.get("bnb_reserve_for_fees") or {}
+            fees_paid = status.get("fees_paid") or {}
+            try:
+                pending_coin = float(profit_reserve.get("pending_quote", 0.0))
+                pending_bnb = float(bnb_reserve.get("pending_quote", 0.0))
+                parts.append(f"reserve_coin={pending_coin:.2f}")
+                parts.append(f"reserve_bnb={pending_bnb:.2f}")
+            except Exception:
+                logging.debug("Unable to format reserve snapshot")
+            try:
+                pair_fees = fees_paid.get("pair", {})
+                total_fees = fees_paid.get("totals", {})
+                parts.append(
+                    "fees_pair=q={:.4f},bnb={:.4f},other={}".format(
+                        float(pair_fees.get("quote", 0.0)),
+                        float(pair_fees.get("bnb", 0.0)),
+                        dict(pair_fees.get("other", {})),
+                    )
+                )
+                parts.append(
+                    "fees_total=q={:.4f},bnb={:.4f},other={}".format(
+                        float(total_fees.get("quote", 0.0)),
+                        float(total_fees.get("bnb", 0.0)),
+                        dict(total_fees.get("other", {})),
+                    )
+                )
+            except Exception:
+                logging.debug("Unable to format fee snapshot")
             logging.info("Status | %s", " | ".join(parts))
 
             def _format_pnl(val: Optional[float]) -> str:
@@ -787,6 +821,7 @@ def main() -> None:
                     avg_price = _weighted_fill_price(sell_response)
                     commission_base = 0.0
                     fills = sell_response.get("fills") if isinstance(sell_response, dict) else None
+                    profit_allocator.record_fees_from_fills(pair_symbol, fills, pair_cfg.quote)
                     if base_asset and fills:
                         for f in fills:
                             try:
@@ -953,6 +988,7 @@ def main() -> None:
                             logging.info("Order response: %s", json.dumps(response))
                             executed_qty = float(response.get("executedQty") or 0.0)
                             fills = response.get("fills") or []
+                            profit_allocator.record_fees_from_fills(pair_symbol, fills, pair_cfg.quote)
                             commission_base = 0.0
                             if base_asset:
                                 for f in fills:
@@ -1022,11 +1058,13 @@ def main() -> None:
                             chunk_count = max(chunk_count, 1)
                             chunk_size = sell_qty / chunk_count
                             sold_total = 0.0
+                            all_fills = []
                             for idx in range(chunk_count):
                                 qty_chunk = chunk_size if idx < chunk_count - 1 else sell_qty - sold_total
                                 if qty_chunk <= 0:
                                     continue
                                 response = client.market_sell(pair_cfg.symbol, qty_chunk)
+                                all_fills.extend(response.get("fills") or [])
                                 sold_total += qty_chunk
                                 logging.info(
                                     "Sell response (%s/%s): %s",
@@ -1037,6 +1075,7 @@ def main() -> None:
                                 if sell_chunk_delay > 0 and idx < chunk_count - 1:
                                     time.sleep(sell_chunk_delay)
                             sell_qty = sold_total
+                            profit_allocator.record_fees_from_fills(pair_symbol, all_fills, pair_cfg.quote)
                     if qty > 0 and sell_qty != qty:
                         realized_pnl *= sell_qty / qty
                     realized_pnl_total += realized_pnl

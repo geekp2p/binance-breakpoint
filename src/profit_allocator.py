@@ -18,7 +18,7 @@ class ProfitRecycleConfig:
     enabled: bool = False
     discount_allocation_pct: float = 0.10
     bnb_allocation_pct: float = 0.05
-    min_order_quote: float = 10.0
+    min_order_quote: float = 11.0
     discount_symbol: str = ""
     bnb_symbol: str = "BNBUSDT"
     accumulation_filename: str = "profit_accumulation.json"
@@ -30,7 +30,7 @@ class ProfitRecycleConfig:
             enabled=bool(raw.get("enabled", False)),
             discount_allocation_pct=float(raw.get("discount_allocation_pct", 0.10)),
             bnb_allocation_pct=float(raw.get("bnb_allocation_pct", 0.05)),
-            min_order_quote=float(raw.get("min_order_quote", 10.0)),
+            min_order_quote=float(raw.get("min_order_quote", 11.0)),
             discount_symbol=str(raw.get("discount_symbol", "") or ""),
             bnb_symbol=str(raw.get("bnb_symbol", "BNBUSDT")),
             accumulation_filename=str(raw.get("accumulation_filename", "profit_accumulation.json")),
@@ -49,6 +49,7 @@ class ProfitAllocator:
             "discount_pools": {},  # symbol -> {pending_quote, holdings_qty, quote_spent}
             "bnb_pending_quote": 0.0,
             "bnb_holdings_qty": 0.0,
+            "fees_paid": {"totals": {"quote": 0.0, "bnb": 0.0, "other": {}}, "per_pair": {}},
             "history": [],
             "last_updated": None,
         }
@@ -85,6 +86,53 @@ class ProfitAllocator:
         pool = pools.setdefault(symbol, {"pending_quote": 0.0, "holdings_qty": 0.0, "quote_spent": 0.0})
         return pool  # type: ignore[return-value]
 
+    def _fees_bucket_locked(self, pair_symbol: str) -> Dict[str, object]:
+        fees = self.state.setdefault("fees_paid", {})
+        per_pair = fees.setdefault("per_pair", {})
+        bucket = per_pair.setdefault(pair_symbol, {"quote": 0.0, "bnb": 0.0, "other": {}})
+        return bucket  # type: ignore[return-value]
+
+    def _bnb_asset(self, quote_asset: str) -> str:
+        symbol = self.config.bnb_symbol.upper()
+        quote = quote_asset.upper()
+        if symbol.endswith(quote) and len(symbol) > len(quote):
+            return symbol[: -len(quote)]
+        return symbol
+
+    def record_fees_from_fills(self, pair_symbol: str, fills, quote_asset: str) -> None:
+        if not fills:
+            return
+        quote = quote_asset.upper()
+        bnb_asset = self._bnb_asset(quote)
+        updated = False
+        with self._lock:
+            totals = self.state.setdefault("fees_paid", {}).setdefault(
+                "totals", {"quote": 0.0, "bnb": 0.0, "other": {}}
+            )
+            for fill in fills:
+                try:
+                    commission = float(fill.get("commission", 0.0))
+                    asset = str(fill.get("commissionAsset", "")).upper()
+                except (TypeError, ValueError, AttributeError):
+                    continue
+                if commission <= 0 or not asset:
+                    continue
+                bucket = self._fees_bucket_locked(pair_symbol)
+                if asset == quote:
+                    bucket["quote"] = float(bucket.get("quote", 0.0)) + commission
+                    totals["quote"] = float(totals.get("quote", 0.0)) + commission
+                elif asset == bnb_asset:
+                    bucket["bnb"] = float(bucket.get("bnb", 0.0)) + commission
+                    totals["bnb"] = float(totals.get("bnb", 0.0)) + commission
+                else:
+                    other_bucket = bucket.setdefault("other", {})
+                    total_other = totals.setdefault("other", {})
+                    other_bucket[asset] = float(other_bucket.get(asset, 0.0)) + commission
+                    total_other[asset] = float(total_other.get(asset, 0.0)) + commission
+                updated = True
+            if updated:
+                self._persist_locked()
+
     def allocate_profit(
         self,
         profit: float,
@@ -119,6 +167,44 @@ class ProfitAllocator:
             )
             self._persist_locked()
         self.process_pending(target_symbol, price_lookup=price_lookup, client=client, dry_run=dry_run, activity_logger=activity_logger)
+
+    def reserves_snapshot(self, discount_symbol: str) -> Dict[str, object]:
+        symbol = discount_symbol.upper() if discount_symbol else ""
+        with self._lock:
+            pool = self._pool_locked(symbol) if symbol else {"pending_quote": 0.0, "holdings_qty": 0.0, "quote_spent": 0.0}
+            snapshot = {
+                "profit_reserve": {
+                    "symbol": symbol or None,
+                    "pending_quote": float(pool.get("pending_quote", 0.0)),
+                    "holdings_qty": float(pool.get("holdings_qty", 0.0)),
+                    "quote_spent": float(pool.get("quote_spent", 0.0)),
+                },
+                "bnb_reserve": {
+                    "symbol": self.config.bnb_symbol,
+                    "pending_quote": float(self.state.get("bnb_pending_quote", 0.0)),
+                    "holdings_qty": float(self.state.get("bnb_holdings_qty", 0.0)),
+                },
+            }
+        return snapshot
+
+    def fees_snapshot(self, pair_symbol: str) -> Dict[str, object]:
+        with self._lock:
+            totals = self.state.get("fees_paid", {}).get("totals", {}) if isinstance(self.state.get("fees_paid"), dict) else {}
+            per_pair = self.state.get("fees_paid", {}).get("per_pair", {}) if isinstance(self.state.get("fees_paid"), dict) else {}
+            pair_bucket = per_pair.get(pair_symbol, {"quote": 0.0, "bnb": 0.0, "other": {}})
+            snapshot = {
+                "pair": {
+                    "quote": float(pair_bucket.get("quote", 0.0)),
+                    "bnb": float(pair_bucket.get("bnb", 0.0)),
+                    "other": dict(pair_bucket.get("other", {})),
+                },
+                "totals": {
+                    "quote": float((totals or {}).get("quote", 0.0)),
+                    "bnb": float((totals or {}).get("bnb", 0.0)),
+                    "other": dict((totals or {}).get("other", {})),
+                },
+            }
+        return snapshot
 
     def _parse_executed_qty(self, resp: Dict[str, object]) -> float:
         if not isinstance(resp, dict):
