@@ -16,6 +16,19 @@ docker compose up backtest
 docker compose up demo
 ```
 
+## New: lightweight HTTP backtest service (port 8181)
+Run an isolated backtest API + minimal UI (separateจาก live HTML):
+
+```bash
+docker compose build backtest
+docker compose up backtest  # serves http://localhost:8181
+```
+
+- Endpoint: `POST /backtest` with body `{ "usdt": 1000, "symbols": ["BTCUSDT"], "intervals": ["1d","7d",...], "top_n": [30,100,500] }`
+- Defaults: auto-discovers liquid USDT pairs (top 50%), tests intervals `1d,7d,30d,1m,3m,6m,1y`, returns ranked `top30/top100/top500` by aggregated PnL.
+- UI: open `http://localhost:8181/` for a single-page form, loading indicator, result tables, and CSV/JSON download links for `top100` and `top500`.
+- The service is read-only and does not affect the live service on port 8080.
+
 ผลลัพธ์: `./out/<SYMBOL>_{events,equity,trades,summary}.(csv/json)` + `plot.png`
 
 ### Persist live savepoints (Windows/Mac/Linux)

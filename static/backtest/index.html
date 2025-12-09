@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Backtest Service</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    body { font-family: Arial, sans-serif; margin: 1.5rem; background: #f7f7f7; color: #222; }
+    h1 { margin-bottom: 0.2rem; }
+    form { background: #fff; padding: 1rem; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,0.12); }
+    label { display: block; margin-top: 0.6rem; font-weight: bold; }
+    input, select { padding: 0.45rem; margin-top: 0.25rem; width: 100%; max-width: 360px; }
+    button { margin-top: 1rem; padding: 0.6rem 1.1rem; font-weight: bold; background: #0b8bd9; color: #fff; border: none; border-radius: 4px; cursor: pointer; }
+    button[disabled] { background: #9fbad1; cursor: not-allowed; }
+    .status { margin-top: 0.5rem; font-size: 0.95rem; color: #555; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem; margin-top: 1rem; }
+    table { width: 100%; border-collapse: collapse; background: #fff; box-shadow: 0 1px 4px rgba(0,0,0,0.1); }
+    th, td { padding: 0.5rem 0.6rem; border: 1px solid #e4e4e4; text-align: left; }
+    th { background: #f0f4f8; }
+    .downloads a { margin-right: 0.8rem; }
+    .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid #0b8bd9; border-radius: 50%; border-top-color: transparent; animation: spin 0.9s linear infinite; margin-left: 6px; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+  <h1>Backtest Service</h1>
+  <p>Run quick, read-only backtests against the top liquid USDT pairs.</p>
+  <form id="backtest-form">
+    <label for="usdt">Starting USDT</label>
+    <input id="usdt" name="usdt" type="number" value="1000" min="10" step="10" required />
+
+    <label for="symbols">Symbols (optional, comma-separated; leave blank for auto-discovery)</label>
+    <input id="symbols" name="symbols" type="text" placeholder="BTCUSDT,ETHUSDT" />
+
+    <label for="intervals">Intervals</label>
+    <select id="intervals" name="intervals" multiple size="7">
+      <option value="1d" selected>1d</option>
+      <option value="7d" selected>7d</option>
+      <option value="30d" selected>30d</option>
+      <option value="1m" selected>1m</option>
+      <option value="3m" selected>3m</option>
+      <option value="6m" selected>6m</option>
+      <option value="1y" selected>1y</option>
+    </select>
+
+    <button type="submit" id="run-btn">Run Backtest</button>
+    <div class="status" id="status">Idle</div>
+  </form>
+
+  <div class="grid" style="margin-top: 1.5rem;">
+    <div>
+      <h3>Top Coins</h3>
+      <div class="downloads" id="downloads"></div>
+      <table id="top-table" aria-label="Top performers">
+        <thead><tr><th>Rank</th><th>Symbol</th><th>PNL (USD)</th><th>PNL (%)</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <div>
+      <h3>Window PnL per Symbol</h3>
+      <table id="results-table" aria-label="Window PnL per Symbol">
+        <thead><tr><th>Symbol</th><th>Window</th><th>PNL (USD)</th><th>PNL (%)</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+
+  <script>
+    const form = document.getElementById('backtest-form');
+    const status = document.getElementById('status');
+    const runBtn = document.getElementById('run-btn');
+    const topTableBody = document.querySelector('#top-table tbody');
+    const resultsTableBody = document.querySelector('#results-table tbody');
+    const downloads = document.getElementById('downloads');
+
+    function setStatus(text, spinning=false) {
+      status.textContent = text;
+      if (spinning) {
+        status.innerHTML = `${text} <span class="spinner" aria-label="loading"></span>`;
+      }
+    }
+
+    function buildDownloadLink(label, data, format) {
+      const mime = format === 'csv' ? 'text/csv' : 'application/json';
+      const content = format === 'csv' ? data.map(row => `${row.symbol},${row.pnl_usd},${row.pnl_pct}`).join('\n') : JSON.stringify(data, null, 2);
+      const blob = new Blob([content], { type: mime });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `backtest-${label}.${format}`;
+      a.textContent = `${label.toUpperCase()} (${format})`;
+      return a;
+    }
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const usdt = Number(document.getElementById('usdt').value || 0);
+      const symbolsRaw = document.getElementById('symbols').value.trim();
+      const intervals = Array.from(document.getElementById('intervals').selectedOptions).map(o => o.value);
+      const body = { usdt, intervals };
+      if (symbolsRaw) {
+        body.symbols = symbolsRaw.split(',').map(s => s.trim()).filter(Boolean);
+      }
+      setStatus('Processing…', true);
+      runBtn.disabled = true;
+      topTableBody.innerHTML = '';
+      resultsTableBody.innerHTML = '';
+      downloads.innerHTML = '';
+      try {
+        const resp = await fetch('http://localhost:8181/backtest', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        });
+        if (!resp.ok) throw new Error(await resp.text());
+        const data = await resp.json();
+        const tops = data.top_symbols || {};
+        const top30 = tops.top30 || [];
+        top30.forEach((row, idx) => {
+          const tr = document.createElement('tr');
+          tr.innerHTML = `<td>${idx+1}</td><td>${row.symbol}</td><td>${row.pnl_usd.toFixed(2)}</td><td>${row.pnl_pct.toFixed(2)}%</td>`;
+          topTableBody.appendChild(tr);
+        });
+        const results = data.results || {};
+        Object.keys(results).forEach(sym => {
+          const windows = results[sym];
+          Object.keys(windows).forEach(win => {
+            const row = windows[win];
+            const tr = document.createElement('tr');
+            tr.innerHTML = `<td>${sym}</td><td>${win}</td><td>${row.pnl_usd.toFixed(2)}</td><td>${row.pnl_pct.toFixed(2)}%</td>`;
+            resultsTableBody.appendChild(tr);
+          });
+        });
+        const dl100json = buildDownloadLink('top100', tops.top100 || [], 'json');
+        const dl100csv = buildDownloadLink('top100', tops.top100 || [], 'csv');
+        const dl500json = buildDownloadLink('top500', tops.top500 || [], 'json');
+        const dl500csv = buildDownloadLink('top500', tops.top500 || [], 'csv');
+        downloads.append('Download: ', dl100json, ' ', dl100csv, ' | ', dl500json, ' ', dl500csv);
+        setStatus(`Done at ${data.timestamp}`);
+      } catch (err) {
+        console.error(err);
+        setStatus(`Error: ${err.message || err}`, false);
+      } finally {
+        runBtn.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>

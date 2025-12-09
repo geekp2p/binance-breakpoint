@@ -3,6 +3,22 @@ services:
   backtest:
     build: .
     image: binance-breakpoint:latest
+    container_name: binance-breakpoint-api
+    env_file:
+      - .env
+    environment:
+      - TZ=Asia/Bangkok
+    volumes:
+      - ./config.yaml:/app/config.yaml:ro
+      - ./out:/app/out
+      - ./data:/app/data
+    ports:
+      - "8181:8181"
+    command: ["python","backtest_service.py"]
+    restart: unless-stopped
+
+  batch:
+    image: binance-breakpoint:latest
     container_name: binance-breakpoint
     env_file:
       - .env
@@ -17,8 +33,6 @@ services:
 
   demo:
     image: binance-breakpoint:latest
-    depends_on:
-      - backtest
     container_name: binance-breakpoint-demo
     environment:
       - TZ=Asia/Bangkok
