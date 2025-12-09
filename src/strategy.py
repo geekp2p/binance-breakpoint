@@ -219,7 +219,8 @@ class StrategyState:
         if self.buy.d_multipliers:
             return min(len(self.buy.d_multipliers), max(1, int(self.buy.n_steps)))
         if self.adaptive.enabled and not self.adaptive_ready:
-            return max(1, int(self.adaptive.bootstrap_steps))
+            bootstrap_steps = max(1, int(self.adaptive.bootstrap_steps))
+            return max(bootstrap_steps, max(1, int(self.buy.n_steps)))
         return max(1, int(self.buy.n_steps))
 
     def _set_initial_d_buy(self):

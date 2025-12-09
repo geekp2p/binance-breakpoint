@@ -345,6 +345,23 @@ def main() -> None:
                 float(resume_status.get("price") or 0.0),
                 float(resume_status.get("realized_pnl_total") or 0.0),
             )
+            expected_steps = state._effective_n_steps()
+            existing_steps = len(state.ladder_prices)
+            if existing_steps != expected_steps:
+                base_price = state.anchor_base_price or state.P0 or latest["close"]
+                state.rebuild_ladder(
+                    base_price,
+                    ts=latest["timestamp"],
+                    log_events=event_log,
+                    reason="SAVEPOINT_REBUILD",
+                    preserve_progress=True,
+                )
+                logging.info(
+                    "Rebuilt ladder from savepoint to %s steps (was %s) using base %.4f",
+                    expected_steps,
+                    existing_steps,
+                    base_price,
+                )
         else:
             reset_round(state, latest["close"], latest["timestamp"])
 
