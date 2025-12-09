@@ -55,6 +55,7 @@ python summary.py --savepoint-dir savepoint --out-dir out
   - เพิ่ม `features.scalp_mode` เพื่อ "เข้าเร็ว-ออกเร็ว" 1-3 ไม้แรก: กำหนด % ย่อที่ให้ซื้อ, % เด้งที่ขายทำกำไร และให้สเกลตามช่วงแกว่งของวัน (วัดจาก high-low ของรอบ) โดยจะหยุดหลังครบ `max_trades` และไม่ไปกินทุนบันไดหลัก (`b_alloc`) เกินโควตา `order_pct_allocation`
   - โครง `features.buy_the_dip` / `features.sell_at_height` ยังเป็นการ "ตั้งธง" เฉย ๆ (log event) ไม่ได้ยิงออเดอร์จริง เพื่อให้เห็นว่าเงื่อนไขถึงจุดหรือยังก่อนปรับค่าใช้งาน
   - บันไดซื้อเลือกสเกลขนาดแบบ `size_mode: geometric|fibonacci`, จัดระยะห่างแบบ `gap_mode: additive|multiplicative (gap_factor)` และตั้งเพดาน `max_quote_per_leg`/`max_total_quote` เพื่อลดการทบเร็วเกินไป
+  - `general.profit_recycling` (เปิด/ปิดได้) จะหักกำไร 10% ของแต่ละรอบไว้ซื้อ coin ของคู่เทรด (ใช้ทุนสะสมขั้นต่ำ 10 USDT) เพื่อรอขายตอน rip ตามสัญญาณ SAH และรวบกำไรจากทุกคู่ 5% ไปซื้อ BNB เพื่อลดค่าฟี; รายการอัปเดตถูกเก็บในไฟล์แยก `profit_accumulation.json` ใต้ savepoint
 - `.env` — ใส่ `BINANCE_API_KEY/BINANCE_API_SECRET` (ไม่ใช้กับ klines public; เตรียมไว้สำหรับงานถัดไป)
 
 ### Live Trader

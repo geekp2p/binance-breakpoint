@@ -497,3 +497,14 @@ general:
     retry: { attempts: 4, backoff_sec: 0.5 }
     save_csv: true
     data_dir: "data"
+  profit_recycling:
+    enabled: false
+    # 1/10 ของกำไรแต่ละรอบจะถูกกันไว้ซื้อ coin price discount (ดีฟอลต์ = symbol ปัจจุบัน)
+    discount_allocation_pct: 0.1
+    # รวมกำไรทุกคู่แล้วแบ่ง 1/20 ไปซื้อ BNB ลด fee
+    bnb_allocation_pct: 0.05
+    min_order_quote: 10.0
+    discount_symbol: ""
+    bnb_symbol: BNBUSDT
+    accumulation_filename: profit_accumulation.json
+    rip_sell_fraction: 0.5

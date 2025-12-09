@@ -25,6 +25,7 @@ from src.savepoint import (
     load_savepoint,
     write_savepoint,
 )
+from src.profit_allocator import ProfitAllocator, ProfitRecycleConfig
 
 
 MAX_HISTORY_ENTRIES = 200
@@ -288,6 +289,7 @@ def main() -> None:
     general = cfg.get("general", {})
     binance_cfg = (general.get("binance") or {})
     base_url = binance_cfg.get("base_url", "https://api.binance.com")
+    profit_cfg = ProfitRecycleConfig.from_dict(general.get("profit_recycling", {}))
 
     pairs_raw = cfg.get("pairs", [])
     if not pairs_raw:
@@ -297,6 +299,8 @@ def main() -> None:
     sell_chunks = max(int(sell_scale_out_cfg.get("chunks", 1)), 1)
     sell_chunk_delay = float(sell_scale_out_cfg.get("delay_seconds", 0.0))
     sell_profit_only = bool(sell_scale_out_cfg.get("profit_only", True))
+
+    profit_allocator = ProfitAllocator(profit_cfg, Path(args.savepoint_dir))
 
     def run_pair(pair_raw: Dict) -> None:
         pair_cfg = build_pair_config(pair_raw, general)
@@ -433,6 +437,18 @@ def main() -> None:
         logging.info("Dry run mode: %s", "ON" if args.dry_run else "OFF")
 
         interval_ms = INTERVAL_MS[pair_cfg.interval]
+        discount_symbol = (profit_cfg.discount_symbol or pair_cfg.symbol).upper()
+        last_close_price = float(latest["close"])
+
+        def price_lookup(symbol: str) -> float:
+            if client:
+                try:
+                    return client.get_ticker_price(symbol)
+                except Exception as exc:  # pylint: disable=broad-except
+                    logging.warning("Unable to fetch ticker for %s: %s", symbol, exc)
+            if symbol.upper() == pair_symbol:
+                return last_close_price
+            return 0.0
 
         event_persist_count = _sync_history(event_log, history_jsonl, history_csv)
         activity_persist_count = _sync_history(
@@ -454,6 +470,14 @@ def main() -> None:
             delta = activity_history[activity_persist_count:]
             _persist_records(delta, activity_jsonl, activity_csv)
             activity_persist_count = len(activity_history)
+
+        profit_allocator.process_pending(
+            discount_symbol,
+            price_lookup=price_lookup,
+            client=None if args.dry_run else client,
+            dry_run=args.dry_run,
+            activity_logger=record_history,
+        )
 
         def _weighted_fill_price(order_resp: Dict[str, object]) -> Optional[float]:
             fills = order_resp.get("fills") if isinstance(order_resp, dict) else None
@@ -732,6 +756,17 @@ def main() -> None:
             state.C = max(state.C - cost_share, 0.0)
             realized_pnl_total += realized_pnl
 
+            if realized_pnl > 0:
+                profit_allocator.allocate_profit(
+                    realized_pnl,
+                    pair_symbol=pair_symbol,
+                    discount_symbol=discount_symbol,
+                    price_lookup=price_lookup,
+                    client=None if args.dry_run else client,
+                    dry_run=args.dry_run,
+                    activity_logger=record_history,
+                )
+
             record_history(
                 {
                     "ts": ts,
@@ -786,6 +821,7 @@ def main() -> None:
                     continue
 
                 ts = kline["timestamp"]
+                last_close_price = float(kline["close"])
                 res = state.on_bar(
                     ts,
                     kline["open"],
