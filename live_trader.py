@@ -348,6 +348,9 @@ def main() -> None:
         else:
             reset_round(state, latest["close"], latest["timestamp"])
 
+        baseline_qty = state.Q
+        baseline_cost = state.C
+
         history_jsonl = savepoint_dir / f"{pair_cfg.symbol.upper()}_event_log.jsonl"
         history_csv = savepoint_dir / f"{pair_cfg.symbol.upper()}_event_log.csv"
         activity_jsonl = savepoint_dir / f"{pair_cfg.symbol.upper()}_activity_history.jsonl"
@@ -594,14 +597,22 @@ def main() -> None:
                 }
             )
 
+        def net_position() -> tuple[float, float]:
+            qty = max(state.Q - baseline_qty, 0.0)
+            cost = max(state.C - baseline_cost, 0.0)
+            return qty, cost
+
         def build_status_snapshot(current_price: float, ts: datetime) -> Dict[str, object]:
-            p_be = state.P_BE()
+            net_qty, net_cost = net_position()
+            p_be = None
+            if net_qty > 0:
+                p_be = net_cost / (net_qty * (1 - state.fees_sell))
             floor_price = state.floor_price(p_be) if p_be is not None else None
-            avg_price = (state.C / state.Q) if state.Q > 0 else None
+            avg_price = (net_cost / net_qty) if net_qty > 0 else None
             unrealized_pnl = None
-            if state.Q > 0:
-                proceeds = current_price * state.Q * (1 - state.fees_sell)
-                unrealized_pnl = proceeds - state.C
+            if net_qty > 0:
+                proceeds = current_price * net_qty * (1 - state.fees_sell)
+                unrealized_pnl = proceeds - net_cost
             next_buy = (
                 state.ladder_prices[state.ladder_next_idx]
                 if state.ladder_next_idx < len(state.ladder_prices)
@@ -625,8 +636,8 @@ def main() -> None:
                 "price": current_price,
                 "phase": state.phase,
                 "stage": state.stage,
-                "qty": state.Q,
-                "quote_spent": state.C,
+                "qty": net_qty,
+                "quote_spent": net_cost,
                 "avg_price": avg_price,
                 "p_be": p_be,
                 "floor_price": floor_price,
@@ -911,6 +922,15 @@ def main() -> None:
                                 ev.get("order_price"),
                                 ev.get("order_quote", 0.0),
                             )
+                        elif evt == "SAH_ORDER":
+                            profit_allocator.sell_on_rip(
+                                discount_symbol,
+                                price_lookup=price_lookup,
+                                client=None if args.dry_run else client,
+                                dry_run=args.dry_run,
+                                activity_logger=record_history,
+                                hinted_price=float(ev.get("order_price") or 0.0),
+                            )
                         elif evt == "SELL":
                             logging.info("Strategy logged SELL event: %s", ev)
 
@@ -961,6 +981,16 @@ def main() -> None:
                     if qty > 0 and sell_qty != qty:
                         realized_pnl *= sell_qty / qty
                     realized_pnl_total += realized_pnl
+                    if realized_pnl > 0:
+                        profit_allocator.allocate_profit(
+                            realized_pnl,
+                            pair_symbol=pair_symbol,
+                            discount_symbol=discount_symbol,
+                            price_lookup=price_lookup,
+                            client=None if args.dry_run else client,
+                            dry_run=args.dry_run,
+                            activity_logger=record_history,
+                        )
                     record_history(
                         {
                             "ts": ts,
