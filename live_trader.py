@@ -348,8 +348,8 @@ def main() -> None:
         else:
             reset_round(state, latest["close"], latest["timestamp"])
 
-        baseline_qty = state.Q
-        baseline_cost = state.C
+        baseline_qty = float(savepoint_payload.get("baseline_qty") or 0.0) if savepoint_payload else 0.0
+        baseline_cost = float(savepoint_payload.get("baseline_cost") or 0.0) if savepoint_payload else 0.0
 
         history_jsonl = savepoint_dir / f"{pair_cfg.symbol.upper()}_event_log.jsonl"
         history_csv = savepoint_dir / f"{pair_cfg.symbol.upper()}_event_log.csv"
@@ -697,6 +697,8 @@ def main() -> None:
             realized_pnl_total=realized_pnl_total,
             latest_price=latest["close"],
             status=startup_status,
+            baseline_qty=baseline_qty,
+            baseline_cost=baseline_cost,
         )
 
         def process_manual_sell(ts: datetime) -> bool:
@@ -809,6 +811,8 @@ def main() -> None:
                 realized_pnl_total=realized_pnl_total,
                 latest_price=avg_price,
                 status=status_snapshot,
+                baseline_qty=baseline_qty,
+                baseline_cost=baseline_cost,
             )
             return True
 
@@ -1022,6 +1026,8 @@ def main() -> None:
                     realized_pnl_total=realized_pnl_total,
                     latest_price=kline["close"],
                     status=status_snapshot,
+                    baseline_qty=baseline_qty,
+                    baseline_cost=baseline_cost,
                 )
 
                 sleep_time = max(args.poll_seconds, interval_ms / 1000.0 / 2)

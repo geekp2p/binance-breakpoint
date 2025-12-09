@@ -199,6 +199,8 @@ def write_savepoint(
     realized_pnl_total: float,
     latest_price: float,
     status: Dict[str, Any],
+    baseline_qty: float,
+    baseline_cost: float,
 ) -> None:
     _ensure_dir(directory)
     save_file = directory / f"{symbol.upper()}.json"
@@ -213,6 +215,8 @@ def write_savepoint(
         "realized_pnl_total": realized_pnl_total,
         "latest_price": latest_price,
         "status": status,
+        "baseline_qty": baseline_qty,
+        "baseline_cost": baseline_cost,
     }
     tmp_file = save_file.with_suffix(".tmp")
     with tmp_file.open("w", encoding="utf-8") as fh:
