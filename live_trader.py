@@ -2,6 +2,7 @@ import argparse
 import csv
 import json
 import logging
+import math
 import os
 import time
 import threading
@@ -195,7 +196,80 @@ def create_http_handler(control: ControlCenter):
         def do_GET(self) -> None:  # noqa: N802
             parsed = urlparse(self.path)
             if parsed.path == "/health":
-                payload = {"status": "ok", "pairs": control.snapshot()}
+                snapshot = control.snapshot()
+
+                def _as_float(val: object, default: Optional[float] = 0.0) -> Optional[float]:
+                    try:
+                        num = float(val)  # type: ignore[arg-type]
+                        if math.isnan(num) or math.isinf(num):
+                            return default
+                        return num
+                    except (TypeError, ValueError):
+                        return default
+
+                def _merge_other(target: Dict[str, float], source: Dict[str, object]) -> None:
+                    for asset, amount in (source or {}).items():
+                        try:
+                            target[asset] = target.get(asset, 0.0) + float(amount)
+                        except (TypeError, ValueError):
+                            continue
+
+                pairs: Dict[str, Dict[str, object]] = {}
+                totals = {
+                    "realized_pnl": 0.0,
+                    "unrealized_pnl": 0.0,
+                    "pnl_total": 0.0,
+                    "profit_reserve": {"pending_quote": 0.0, "holdings_qty": 0.0, "quote_spent": 0.0},
+                    "bnb_reserve": {"pending_quote": 0.0, "holdings_qty": 0.0},
+                    "fees_paid": {"quote": 0.0, "bnb": 0.0, "other": {}},
+                }
+
+                for sym, raw in snapshot.items():
+                    profit_reserve = (
+                        raw.get("profit_reserve")
+                        or raw.get("profit_reserve_coin")
+                        or {"pending_quote": 0.0, "holdings_qty": 0.0, "quote_spent": 0.0}
+                    )
+                    bnb_reserve = raw.get("bnb_reserve") or raw.get("bnb_reserve_for_fees") or {
+                        "pending_quote": 0.0,
+                        "holdings_qty": 0.0,
+                    }
+                    fees_paid = raw.get("fees_paid") or {"pair": {}, "totals": {}}
+
+                    realized = _as_float(raw.get("realized_pnl"), _as_float(raw.get("realized_pnl_total")))
+                    unrealized_raw = raw.get("unrealized_pnl")
+                    unrealized = None
+                    if isinstance(unrealized_raw, (int, float)):
+                        unrealized = _as_float(unrealized_raw, default=None)  # type: ignore[arg-type]
+                    pnl_total = realized + (unrealized or 0.0)
+
+                    pair_payload = {
+                        **raw,
+                        "realized_pnl": realized,
+                        "unrealized_pnl": unrealized,
+                        "pnl_total": pnl_total,
+                        "profit_reserve": profit_reserve,
+                        "bnb_reserve": bnb_reserve,
+                        "fees_paid": fees_paid,
+                    }
+                    pairs[sym] = pair_payload
+
+                    totals["realized_pnl"] += realized
+                    totals["unrealized_pnl"] += unrealized or 0.0
+                    totals["profit_reserve"]["pending_quote"] += _as_float(profit_reserve.get("pending_quote"))
+                    totals["profit_reserve"]["holdings_qty"] += _as_float(profit_reserve.get("holdings_qty"))
+                    totals["profit_reserve"]["quote_spent"] += _as_float(profit_reserve.get("quote_spent"))
+                    totals["bnb_reserve"]["pending_quote"] += _as_float(bnb_reserve.get("pending_quote"))
+                    totals["bnb_reserve"]["holdings_qty"] += _as_float(bnb_reserve.get("holdings_qty"))
+
+                    fee_totals = fees_paid.get("totals") if isinstance(fees_paid, dict) else {}
+                    totals["fees_paid"]["quote"] += _as_float((fee_totals or {}).get("quote"))
+                    totals["fees_paid"]["bnb"] += _as_float((fee_totals or {}).get("bnb"))
+                    totals_other = totals["fees_paid"].setdefault("other", {})
+                    _merge_other(totals_other, (fee_totals or {}).get("other", {}))
+
+                totals["pnl_total"] = totals["realized_pnl"] + totals["unrealized_pnl"]
+                payload = {"status": "ok", "pairs": pairs, "totals": totals}
                 self._json(200, payload)
                 return
             self._json(404, {"error": "not found"})

@@ -240,6 +240,11 @@
         <div class="pill" id="unrealizedCount">0 pairs</div>
       </div>
       <div class="card">
+        <h3>Total PnL</h3>
+        <div class="value" id="totalPnl">-</div>
+        <div class="pill" id="pnlSummary">-</div>
+      </div>
+      <div class="card">
         <h3>Paused pairs</h3>
         <div class="value" id="pausedCount">0</div>
         <div class="pill" id="totalCount">0 pairs total</div>
@@ -248,6 +253,21 @@
         <h3>Total quote used</h3>
         <div class="value" id="quoteSpent">-</div>
         <div class="pill" id="ladderInfo">-</div>
+      </div>
+      <div class="card">
+        <h3>Profit reserve</h3>
+        <div class="value" id="reserveCoin">-</div>
+        <div class="pill" id="reserveCoinMeta">Pending/held</div>
+      </div>
+      <div class="card">
+        <h3>BNB reserve</h3>
+        <div class="value" id="reserveBnb">-</div>
+        <div class="pill" id="reserveBnbMeta">Pending/held</div>
+      </div>
+      <div class="card">
+        <h3>Fees paid</h3>
+        <div class="value" id="feesPaid">-</div>
+        <div class="pill" id="feesMeta">Quote / BNB</div>
       </div>
     </div>
 
@@ -264,6 +284,9 @@
               <th>Unrealized</th>
               <th>Realized Total</th>
               <th>Cumulative PnL</th>
+              <th>Profit reserve</th>
+              <th>BNB reserve</th>
+              <th>Fees</th>
               <th>Next (Buy/Sell)</th>
               <th>Ladder</th>
               <th>Status</th>
@@ -272,6 +295,9 @@
             </tr>
           </thead>
           <tbody id="rows"></tbody>
+          <tfoot>
+            <tr id="totalsRow"></tr>
+          </tfoot>
         </table>
       </div>
     </div>
@@ -302,6 +328,30 @@
 
     function sum(values) {
       return values.reduce((acc, v) => acc + (typeof v === "number" ? v : 0), 0);
+    }
+
+    function reserveLabel(reserve, { compact = false } = {}) {
+      if (!reserve) return "-";
+      const symbol = reserve.symbol || "COIN";
+      const pending = fmtNumber(reserve.pending_quote ?? 0, 2);
+      const holdings = fmtNumber(reserve.holdings_qty ?? 0, 4);
+      const spent = reserve.quote_spent ? fmtNumber(reserve.quote_spent, 2) : null;
+      if (compact) return `${symbol} q:${pending} h:${holdings}`;
+      const parts = [`Pending ${pending}q`, `Hold ${holdings}`];
+      if (spent) parts.push(`Spent ${spent}q`);
+      return `${symbol} ${parts.join(" / ")}`;
+    }
+
+    function feesLabel(fees) {
+      if (!fees) return "-";
+      const quote = fmtNumber(fees.quote ?? 0, 4);
+      const bnb = fmtNumber(fees.bnb ?? 0, 4);
+      const other = fees.other && Object.keys(fees.other).length
+        ? `Other ${Object.entries(fees.other)
+            .map(([k, v]) => `${k}:${fmtNumber(v, 4)}`)
+            .join(", ")}`
+        : null;
+      return other ? `${quote} q / ${bnb} bnb (${other})` : `${quote} q / ${bnb} bnb`;
     }
 
     function apiUrl(path) {
@@ -367,26 +417,43 @@
     function render(data) {
       const pairs = data.pairs || {};
       const entries = Object.entries(pairs);
+      const totals = data.totals || {};
       const now = new Date().toLocaleString();
       document.getElementById("lastUpdated").textContent = `Last updated: ${now}`;
       metaEl.textContent = `${entries.length} pairs | status: ${data.status}`;
 
       const unrealizedList = entries.map(([, v]) => v.unrealized_pnl).filter((v) => v !== null && v !== undefined);
-      const realizedList = entries.map(([, v]) => v.realized_pnl_total).filter((v) => v !== null && v !== undefined);
+      const realizedList = entries.map(([, v]) => v.realized_pnl_total ?? v.realized_pnl).filter((v) => v !== null && v !== undefined);
       const quoteSpent = sum(entries.map(([, v]) => v.quote_spent));
+      const totalQty = sum(entries.map(([, v]) => v.qty));
       const paused = entries.filter(([, v]) => v.paused).length;
       const ladderInfo = entries.map(([, v]) => v.ladder_total || 0);
 
-      const unrealized = sum(unrealizedList);
-      const realized = sum(realizedList);
+      const unrealized = typeof totals.unrealized_pnl === "number" ? totals.unrealized_pnl : sum(unrealizedList);
+      const realized = typeof totals.realized_pnl === "number" ? totals.realized_pnl : sum(realizedList);
+      const totalPnl = typeof totals.pnl_total === "number" ? totals.pnl_total : realized + unrealized;
+
       document.getElementById("unrealized").innerHTML = formatPnl(unrealized);
       document.getElementById("unrealizedCount").textContent = `${unrealizedList.length} pairs with position`;
       document.getElementById("realized").innerHTML = formatPnl(realized);
       document.getElementById("realizedCount").textContent = `${realizedList.length} pairs with realized PnL`;
+      document.getElementById("totalPnl").innerHTML = formatPnl(totalPnl);
+      document.getElementById("pnlSummary").textContent = `r ${fmtNumber(realized, 2)} / u ${fmtNumber(unrealized, 2)}`;
       document.getElementById("pausedCount").textContent = paused;
       document.getElementById("totalCount").textContent = `${entries.length} pairs total`;
       document.getElementById("quoteSpent").textContent = `${fmtNumber(quoteSpent, 2)} USDT`;
       document.getElementById("ladderInfo").textContent = `Max ladder steps: ${Math.max(0, ...ladderInfo)}`;
+
+      const totalReserves = totals.profit_reserve || {};
+      document.getElementById("reserveCoin").textContent = reserveLabel(totalReserves, { compact: true });
+      document.getElementById("reserveCoinMeta").textContent = reserveLabel(totalReserves);
+      const totalBnb = totals.bnb_reserve || {};
+      document.getElementById("reserveBnb").textContent = reserveLabel(totalBnb, { compact: true });
+      document.getElementById("reserveBnbMeta").textContent = reserveLabel(totalBnb);
+
+      const feeTotals = totals.fees_paid || {};
+      document.getElementById("feesPaid").textContent = feesLabel(feeTotals);
+      document.getElementById("feesMeta").textContent = `Quote ${fmtNumber(feeTotals.quote ?? 0, 4)} / BNB ${fmtNumber(feeTotals.bnb ?? 0, 4)}`;
 
       rowsEl.innerHTML = entries
         .map(([symbol, v]) => {
@@ -401,7 +468,8 @@
               : "-";
           const actionLabel = v.paused ? "Resume" : "Pause";
           const actionClass = v.paused ? "btn-secondary" : "btn-danger";
-          const cumulativePnl = (v.realized_pnl_total || 0) + (v.unrealized_pnl || 0);
+          const realizedPnl = v.realized_pnl_total ?? v.realized_pnl ?? 0;
+          const cumulativePnl = typeof v.pnl_total === "number" ? v.pnl_total : realizedPnl + (v.unrealized_pnl || 0);
           const exitLabel = (v.unrealized_pnl || 0) >= 0 ? "Take profit" : "Cut loss";
           const exitClass = (v.unrealized_pnl || 0) >= 0 ? "" : "btn-danger";
           const hasPosition = (v.qty || 0) > 0;
@@ -409,6 +477,9 @@
           const exitTitle = hasPosition
             ? "Sell now at market (includes ~0.1% fee)"
             : "No open position to exit";
+          const profitReserve = v.profit_reserve || v.profit_reserve_coin;
+          const bnbReserve = v.bnb_reserve || v.bnb_reserve_for_fees;
+          const pairFees = v.fees_paid?.pair ?? v.fees_paid?.totals ?? v.fees_paid;
 
           return `
             <tr>
@@ -418,8 +489,11 @@
               <td>${fmtNumber(v.qty, 6)}<div class="muted">Spent ${fmtNumber(v.quote_spent, 6)} quote</div></td>
               <td>${v.avg_price ? fmtNumber(v.avg_price) : "-"}</td>
               <td class="${pnlClass(v.unrealized_pnl)}">${unrealizedCell}</td>
-              <td class="${pnlClass(v.realized_pnl_total)}">${formatPnl(v.realized_pnl_total)}</td>
+              <td class="${pnlClass(realizedPnl)}">${formatPnl(realizedPnl)}</td>
               <td class="${pnlClass(cumulativePnl)}">${formatPnl(cumulativePnl)}</td>
+              <td>${reserveLabel(profitReserve, { compact: true })}</td>
+              <td>${reserveLabel(bnbReserve, { compact: true })}</td>
+              <td>${feesLabel(pairFees)}</td>
               <td><div class="muted">Buy: ${nextBuy}</div><div class="muted">Sell: ${nextSell}</div></td>
               <td>${ladder}</td>
               <td><span class="status ${statusClass}">${statusText}</span></td>
@@ -428,6 +502,22 @@
             </tr>`;
         })
         .join("");
+
+      const totalsRow = document.getElementById("totalsRow");
+      totalsRow.innerHTML = `
+        <td><strong>ALL</strong></td>
+        <td class="phase">-</td>
+        <td>-</td>
+        <td>${fmtNumber(totalQty, 6)}<div class="muted">Spent ${fmtNumber(quoteSpent, 6)} quote</div></td>
+        <td>-</td>
+        <td class="${pnlClass(unrealized)}">${formatPnl(unrealized)}</td>
+        <td class="${pnlClass(realized)}">${formatPnl(realized)}</td>
+        <td class="${pnlClass(totalPnl)}">${formatPnl(totalPnl)}</td>
+        <td>${reserveLabel(totalReserves, { compact: true })}</td>
+        <td>${reserveLabel(totalBnb, { compact: true })}</td>
+        <td>${feesLabel(feeTotals)}</td>
+        <td colspan="5" class="muted">Aggregated totals</td>
+      `;
     }
 
     function pnlClass(val) {
