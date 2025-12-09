@@ -630,6 +630,8 @@ def main() -> None:
             if net_qty > 0:
                 proceeds = current_price * net_qty * (1 - state.fees_sell)
                 unrealized_pnl = proceeds - net_cost
+            realized_pnl = realized_pnl_total
+            pnl_total = realized_pnl_total + (unrealized_pnl or 0.0)
             next_buy = (
                 state.ladder_prices[state.ladder_next_idx]
                 if state.ladder_next_idx < len(state.ladder_prices)
@@ -669,6 +671,8 @@ def main() -> None:
                 "ladder_index": ladder_progress,
                 "ladder_total": ladder_total,
                 "unrealized_pnl": unrealized_pnl,
+                "realized_pnl": realized_pnl,
+                "pnl_total": pnl_total,
                 "realized_pnl_total": realized_pnl_total,
             }
 
@@ -704,6 +708,35 @@ def main() -> None:
                 parts.append(f"unrealized={status['unrealized_pnl']:.2f}")
             parts.append(f"realized_total={status['realized_pnl_total']:.2f}")
             logging.info("Status | %s", " | ".join(parts))
+
+            def _format_pnl(val: Optional[float]) -> str:
+                return f"{val:.2f}" if val is not None else "-"
+
+            snapshot = control.snapshot()
+            if not snapshot:
+                return
+
+            per_pair_parts = []
+            total_realized = 0.0
+            total_unrealized = 0.0
+            for sym, snap in sorted(snapshot.items()):
+                realized = float(snap.get("realized_pnl") or snap.get("realized_pnl_total") or 0.0)
+                unrealized = snap.get("unrealized_pnl")
+                total = realized + (unrealized or 0.0)
+                per_pair_parts.append(
+                    f"{sym}:r={_format_pnl(realized)},u={_format_pnl(unrealized)},t={_format_pnl(total)}"
+                )
+                total_realized += realized
+                total_unrealized += unrealized or 0.0
+
+            total_all = total_realized + total_unrealized
+            logging.info("PnL compact | %s", " | ".join(per_pair_parts))
+            logging.info(
+                "PnL total   | r=%s | u=%s | t=%s",
+                _format_pnl(total_realized),
+                _format_pnl(total_unrealized),
+                _format_pnl(total_all),
+            )
 
         startup_status = build_status_snapshot(latest["close"], latest["timestamp"])
         log_status(startup_status)
