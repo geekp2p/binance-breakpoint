@@ -179,6 +179,19 @@
     .pnl-neg { color: var(--danger); }
     .muted { color: var(--muted); font-size: 0.92rem; }
 
+    .timestamp {
+      display: inline-block;
+      margin-top: 2px;
+      font-size: 0.78rem;
+      word-break: break-all;
+    }
+
+    .phase {
+      font-size: 0.88rem;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+    }
+
     .footer {
       margin-top: 16px;
       color: var(--muted);
@@ -399,8 +412,8 @@
 
           return `
             <tr>
-              <td><strong>${symbol}</strong><div class="muted">${v.timestamp ?? ""}</div></td>
-              <td>${v.phase || "-"}</td>
+              <td><strong>${symbol}</strong><div class="muted timestamp">${v.timestamp ?? ""}</div></td>
+              <td class="phase">${v.phase || "-"}</td>
               <td>${fmtNumber(v.price)}</td>
               <td>${fmtNumber(v.qty, 6)}<div class="muted">Spent ${fmtNumber(v.quote_spent, 6)} quote</div></td>
               <td>${v.avg_price ? fmtNumber(v.avg_price) : "-"}</td>
