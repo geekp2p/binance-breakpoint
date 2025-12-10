@@ -592,6 +592,29 @@ def main() -> None:
                 return None
             return total_quote / total_qty
 
+        def _normalise_buy_event(ev: Dict[str, object]) -> None:
+            """Ensure buy events expose standard sizing keys.
+
+            Ladder buys emit `amt_q`/`q`, while scalp/micro buys use
+            `order_quote`/`qty`. Normalising here keeps downstream logic
+            (clamping, logging, adjustments) consistent.
+            """
+
+            if "amt_q" not in ev:
+                try:
+                    ev["amt_q"] = float(ev.get("order_quote", 0.0))
+                except (TypeError, ValueError):
+                    ev["amt_q"] = 0.0
+
+            if ev.get("q") is None and ev.get("qty") is None:
+                try:
+                    ev["q"] = float(ev.get("order_qty", 0.0))
+                except (TypeError, ValueError):
+                    ev["q"] = 0.0
+            # Mirror back to `qty` for consistency with UI/history payloads
+            if ev.get("qty") is None and ev.get("q") is not None:
+                ev["qty"] = ev["q"]
+
         def clamp_buy_to_available(
             ev: Dict[str, object],
             available_quote: Optional[float],
@@ -1084,9 +1107,15 @@ def main() -> None:
 
                 for ev in new_events:
                     evt = ev.get("event")
-                    if evt == "BUY":
+                    if evt in {"BUY", "SCALP_BUY", "MICRO_BUY"}:
+                        _normalise_buy_event(ev)
                         quote_amt = float(ev.get("amt_q", 0.0))
-                        logging.info("BUY ladder fill at %.4f for quote %.2f", ev.get("price"), quote_amt)
+                        logging.info(
+                            "%s fill at %.4f for quote %.2f",
+                            evt,
+                            ev.get("price"),
+                            quote_amt,
+                        )
                         if client and quote_amt > 0:
                             try:
                                 available_quote = client.get_free_balance(pair_cfg.quote)
