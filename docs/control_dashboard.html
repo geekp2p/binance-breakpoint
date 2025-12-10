@@ -218,7 +218,7 @@
           id="apiBase"
           class="input"
           type="text"
-          value="http://localhost:8080"
+          value="http://45.154.25.16:8080"
           aria-label="API base URL"
         />
         <label style="display:flex;align-items:center;gap:6px;color:var(--muted);font-weight:600;">
@@ -328,7 +328,7 @@
         const baseHost = hostname === "localhost" ? "localhost" : hostname;
         return `${protocol}//${baseHost}:8080`;
       }
-      return "http://localhost:8080";
+      return "http://45.154.25.16:8080";
     })();
 
     if (!apiBaseEl.value || apiBaseEl.value.includes("45.154.25.16")) {
