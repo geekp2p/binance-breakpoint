@@ -691,6 +691,10 @@ def main() -> None:
         def net_position() -> tuple[float, float]:
             qty = max(state.Q - baseline_qty, 0.0)
             cost = max(state.C - baseline_cost, 0.0)
+            # Avoid reporting a cost when there is no position (can happen if cost
+            # bookkeeping drifts slightly after a full exit).
+            if qty <= 0:
+                return 0.0, 0.0
             return qty, cost
 
         def build_status_snapshot(current_price: float, ts: datetime) -> Dict[str, object]:
