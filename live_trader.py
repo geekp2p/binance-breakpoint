@@ -15,7 +15,7 @@ from typing import Dict, List, Optional, Mapping
 import requests
 from urllib.parse import parse_qs, urlparse
 
-from main import load_config
+from main import load_config, fee_multiplier_from_general
 from src.backtester import PairConfig, init_state_from_config, prepare_ladder
 from src.fetchers.binance import INTERVAL_MS
 from src.strategy import PHASE_ACCUMULATE, PHASE_TRAIL
@@ -33,6 +33,7 @@ MAX_HISTORY_ENTRIES = 200
 
 
 def build_pair_config(raw: Dict, general: Dict) -> PairConfig:
+    fee_multiplier = fee_multiplier_from_general(general)
     return PairConfig(
         symbol=raw["symbol"],
         quote=raw.get("quote", "QUOTE"),
@@ -42,8 +43,8 @@ def build_pair_config(raw: Dict, general: Dict) -> PairConfig:
         lookback_days=float(raw.get("lookback_days", 1)) if raw.get("lookback_days") is not None else None,
         start=raw.get("start", ""),
         end=raw.get("end", ""),
-        fees_taker=float(raw["fees"]["taker"]),
-        fees_maker=float(raw["fees"]["maker"]),
+        fees_taker=float(raw["fees"]["taker"]) * fee_multiplier,
+        fees_maker=float(raw["fees"]["maker"]) * fee_multiplier,
         buy_d=float(raw["buy_ladder"]["d_buy"]),
         buy_m=float(raw["buy_ladder"]["m_buy"]),
         buy_n=int(raw["buy_ladder"]["n_steps"]),

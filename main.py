@@ -1,5 +1,5 @@
 
-import argparse, os, json, yaml
+import argparse, os, json, yaml, math
 from src.backtester import PairConfig, run_backtest_for_pair, load_data_for_pair
 from src.report import save_outputs
 
@@ -13,6 +13,19 @@ def load_config(path):
     txt = pattern.sub(repl, txt)
     return yaml.safe_load(txt)
 
+def fee_multiplier_from_general(general: dict) -> float:
+    """Return a fee multiplier factoring in optional BNB discounts."""
+
+    binance_cfg = general.get("binance") or {}
+    try:
+        if "fee_discount_factor" in binance_cfg:
+            factor = float(binance_cfg.get("fee_discount_factor", 1.0))
+            return factor if math.isfinite(factor) and factor > 0 else 1.0
+    except (TypeError, ValueError):
+        return 1.0
+
+    return 0.75 if binance_cfg.get("bnb_fee_discount") else 1.0
+
 def run(cfg_path, out_dir):
     cfg = load_config(cfg_path)
     os.makedirs(out_dir, exist_ok=True)
@@ -20,6 +33,8 @@ def run(cfg_path, out_dir):
     api = cfg.get("api", {})
     snapshot_every = int(general.get("snapshot_every_bars", 1))
     use_maker = bool(general.get("use_maker", True))
+
+    fee_multiplier = fee_multiplier_from_general(general)
 
     for pc in cfg.get("pairs", []):
         paircfg = PairConfig(
