@@ -749,6 +749,19 @@ def main() -> None:
             if net_qty <= 0 and net_cost <= 0:
                 ladder_progress = 0
             ladder_progress = min(max(ladder_progress, 0), ladder_total)
+            ladder_legs: List[Dict[str, object]] = []
+            ladder_spent_quote = None
+            if state.ladder_amounts_quote:
+                ladder_spent_quote = sum(state.ladder_amounts_quote[: ladder_progress])
+            for idx, (price, quote) in enumerate(zip(state.ladder_prices, state.ladder_amounts_quote)):
+                ladder_legs.append(
+                    {
+                        "idx": idx + 1,
+                        "price": price,
+                        "quote": quote,
+                        "filled": idx < ladder_progress,
+                    }
+                )
             next_sell_target = None
             if state.Q > 0:
                 if state.phase == PHASE_TRAIL:
@@ -774,11 +787,13 @@ def main() -> None:
                 "next_sell_price": next_sell_target,
                 "ladder_index": ladder_progress,
                 "ladder_total": ladder_total,
+                "ladder_legs": ladder_legs,
+                "ladder_next_quote": next_buy_quote,
+                "ladder_spent_quote": ladder_spent_quote,
                 "unrealized_pnl": unrealized_pnl,
                 "realized_pnl": realized_pnl,
                 "pnl_total": pnl_total,
-                "realized_pnl_total": realized_pnl_total,
-                "profit_reserve_coin": reserves.get("profit_reserve"),
+                "realized_pnl_total": realized_pnl_total,                "profit_reserve_coin": reserves.get("profit_reserve"),
                 "bnb_reserve_for_fees": reserves.get("bnb_reserve"),
                 "fees_paid": fees,
                 "scalp_enabled": bool(state.scalp.enabled),

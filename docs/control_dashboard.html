@@ -179,6 +179,23 @@
     .pnl-neg { color: var(--danger); }
     .muted { color: var(--muted); font-size: 0.92rem; }
 
+    .ladder-badges { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+    .ladder-badge {
+      display: inline-block;
+      padding: 4px 6px;
+      border-radius: 8px;
+      background: rgba(45, 140, 240, 0.12);
+      border: 1px solid rgba(45, 140, 240, 0.25);
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: var(--text);
+    }
+    .ladder-badge.filled {
+      background: rgba(76, 175, 80, 0.15);
+      border-color: rgba(76, 175, 80, 0.35);
+      color: var(--success);
+    }
+
     .timestamp {
       display: inline-block;
       margin-top: 2px;
@@ -361,6 +378,17 @@
       return `${symbol} ${parts.join(" / ")}`;
     }
 
+    function ladderBadges(legs) {
+      if (!Array.isArray(legs) || !legs.length) return "";
+      const items = legs.map((leg) => {
+        const cls = leg.filled ? "ladder-badge filled" : "ladder-badge";
+        const price = fmtNumber(leg.price);
+        const quote = fmtNumber(leg.quote, 2);
+        return `<span class="${cls}" title="Step ${leg.idx}: ${price} / ${quote} quote">#${leg.idx} ${quote}</span>`;
+      });
+      return `<div class="ladder-badges">${items.join("")}</div>`;
+    }
+
     function feesLabel(fees) {
       if (!fees) return "-";
       const quote = fmtNumber(fees.quote ?? 0, 4);
@@ -485,6 +513,8 @@
             typeof v.ladder_index === "number" && typeof v.ladder_total === "number"
               ? `${Math.min(v.ladder_index, v.ladder_total)}/${v.ladder_total}`
               : "-";
+          const ladderNextQuote = v.ladder_next_quote ? fmtNumber(v.ladder_next_quote, 2) : "-";
+          const ladderBadgesHtml = ladderBadges(v.ladder_legs);
           const actionLabel = v.paused ? "Resume" : "Pause";
           const actionClass = v.paused ? "btn-secondary" : "btn-danger";
           const realizedPnl = v.realized_pnl_total ?? v.realized_pnl ?? 0;
@@ -509,12 +539,12 @@
               <td>${v.avg_price ? fmtNumber(v.avg_price) : "-"}</td>
               <td class="${pnlClass(v.unrealized_pnl)}">${unrealizedCell}</td>
               <td class="${pnlClass(realizedPnl)}">${formatPnl(realizedPnl)}</td>
-              <td class="${pnlClass(cumulativePnl)}">${formatPnl(cumulativePnl)}</td>
+               <td class="${pnlClass(cumulativePnl)}">${formatPnl(cumulativePnl)}</td>
               <td>${reserveLabel(profitReserve, { compact: true })}</td>
               <td>${reserveLabel(bnbReserve, { compact: true })}</td>
               <td>${feesLabel(pairFees)}</td>
               <td><div class="muted">Buy: ${nextBuy}</div><div class="muted">Sell: ${nextSell}</div></td>
-              <td>${ladder}</td>
+              <td>${ladder}<div class="muted">Next q: ${ladderNextQuote}</div>${ladderBadgesHtml}</td>
               <td><span class="status ${statusClass}">${statusText}</span></td>
               <td><button class="${exitClass}" data-action="exit" data-symbol="${symbol}" aria-label="${exitLabel}" title="${exitTitle}" ${exitDisabled}>${exitLabel}</button></td>
               <td><button class="${actionClass}" data-action="toggle" data-symbol="${symbol}" data-paused="${v.paused}">${actionLabel}</button></td>
