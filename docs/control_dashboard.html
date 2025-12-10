@@ -214,7 +214,13 @@
     <header>
       <h1>Binance Breakpoint – PnL & Control</h1>
       <div class="controls">
-        <input id="apiBase" class="input" type="text" value="http://45.154.25.16:8080" aria-label="API base URL" />
+        <input
+          id="apiBase"
+          class="input"
+          type="text"
+          value="http://localhost:8080"
+          aria-label="API base URL"
+        />
         <label style="display:flex;align-items:center;gap:6px;color:var(--muted);font-weight:600;">
           <input id="useProxy" type="checkbox" />
           Use CORS proxy
@@ -315,6 +321,19 @@
     const metaEl = document.getElementById("meta");
     const proxyToggle = document.getElementById("useProxy");
     const proxyPrefKey = "bb_use_proxy";
+
+    const defaultApiBase = (() => {
+      const { protocol, hostname } = window.location;
+      if (protocol.startsWith("http") && hostname) {
+        const baseHost = hostname === "localhost" ? "localhost" : hostname;
+        return `${protocol}//${baseHost}:8080`;
+      }
+      return "http://localhost:8080";
+    })();
+
+    if (!apiBaseEl.value || apiBaseEl.value.includes("45.154.25.16")) {
+      apiBaseEl.value = defaultApiBase;
+    }
 
     function fmtNumber(value, digits = 2) {
       if (value === null || value === undefined || Number.isNaN(value)) return "-";
