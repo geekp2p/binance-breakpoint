@@ -379,8 +379,22 @@
       return Number(value).toLocaleString(undefined, { minimumFractionDigits: d, maximumFractionDigits: d });
     }
 
+    function fmtPercent(value, digits = 2) {
+      if (value === null || value === undefined || Number.isNaN(value)) return null;
+      return `${fmtNumber(value, digits)}%`;
+    }
+
     function sum(values) {
       return values.reduce((acc, v) => acc + (typeof v === "number" ? v : 0), 0);
+    }
+
+    function formatGap(targetPrice, currentPrice) {
+      if (typeof targetPrice !== "number") return "-";
+      const pct = typeof currentPrice === "number" && currentPrice > 0
+        ? ((targetPrice - currentPrice) / currentPrice) * 100
+        : null;
+      const pctLabel = fmtPercent(pct);
+      return pctLabel ? `${fmtNumber(targetPrice)} (${pctLabel})` : fmtNumber(targetPrice);
     }
 
     function reserveLabel(reserve, { compact = false } = {}) {
@@ -395,7 +409,7 @@
       return `${symbol} ${parts.join(" / ")}`;
     }
 
-    function ladderBadges(legs) {
+    function ladderBadges(legs, currentPrice) {
       if (!Array.isArray(legs) || !legs.length) return "";
       const filled = legs.filter((leg) => leg.filled).length;
       const summaryText = `View ladder (${filled}/${legs.length} filled)`;
@@ -403,7 +417,12 @@
         const cls = leg.filled ? "ladder-badge filled" : "ladder-badge";
         const price = fmtNumber(leg.price);
         const quote = fmtNumber(leg.quote, 2);
-        return `<span class="${cls}" title="Step ${leg.idx}: ${price} / ${quote} quote">#${leg.idx} ${quote}</span>`;
+        const pct = typeof currentPrice === "number" && currentPrice > 0
+          ? ((leg.price - currentPrice) / currentPrice) * 100
+          : null;
+        const pctLabel = fmtPercent(pct);
+        const pctText = pctLabel ? ` (${pctLabel})` : "";
+        return `<span class="${cls}" title="Step ${leg.idx}: ${price} / ${quote} quote">#${leg.idx} ${price}${pctText}</span>`;
       });
       return `
         <details class="ladder-steps">
@@ -531,13 +550,14 @@
           const statusText = v.paused ? "Paused" : "Live";
           const unrealizedCell = v.unrealized_pnl === null ? "-" : formatPnl(v.unrealized_pnl);
           const nextSell = v.next_sell_price ? fmtNumber(v.next_sell_price) : "-";
-          const nextBuy = v.next_buy_price ? fmtNumber(v.next_buy_price) : "-";
+          const nextBuy = formatGap(v.next_buy_price, v.price);
+          const buyTheDip = v.btd_armed ? formatGap(v.btd_target_price, v.price) : "-";
           const ladder =
             typeof v.ladder_index === "number" && typeof v.ladder_total === "number"
               ? `${Math.min(v.ladder_index, v.ladder_total)}/${v.ladder_total}`
               : "-";
           const ladderNextQuote = v.ladder_next_quote ? fmtNumber(v.ladder_next_quote, 2) : "-";
-          const ladderBadgesHtml = ladderBadges(v.ladder_legs);
+          const ladderBadgesHtml = ladderBadges(v.ladder_legs, v.price);
           const actionLabel = v.paused ? "Resume" : "Pause";
           const actionClass = v.paused ? "btn-secondary" : "btn-danger";
           const realizedPnl = v.realized_pnl_total ?? v.realized_pnl ?? 0;
@@ -566,7 +586,7 @@
               <td>${reserveLabel(profitReserve, { compact: true })}</td>
               <td>${reserveLabel(bnbReserve, { compact: true })}</td>
               <td>${feesLabel(pairFees)}</td>
-              <td><div class="muted">Buy: ${nextBuy}</div><div class="muted">Sell: ${nextSell}</div></td>
+              <td><div class="muted">Buy: ${nextBuy}</div><div class="muted">BTD: ${buyTheDip}</div><div class="muted">Sell: ${nextSell}</div></td>
               <td>${ladder}<div class="muted">Next q: ${ladderNextQuote}</div>${ladderBadgesHtml}</td>
               <td><span class="status ${statusClass}">${statusText}</span></td>
               <td><button class="${exitClass}" data-action="exit" data-symbol="${symbol}" aria-label="${exitLabel}" title="${exitTitle}" ${exitDisabled}>${exitLabel}</button></td>

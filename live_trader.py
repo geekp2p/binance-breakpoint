@@ -762,6 +762,9 @@ def main() -> None:
                         "filled": idx < ladder_progress,
                     }
                 )
+            btd_target = None
+            if state.btd_armed and state.btd_last_bottom is not None:
+                btd_target = state.btd_last_bottom * (1 + state.btd.limit_offset)
             next_sell_target = None
             if state.Q > 0:
                 if state.phase == PHASE_TRAIL:
@@ -790,10 +793,13 @@ def main() -> None:
                 "ladder_legs": ladder_legs,
                 "ladder_next_quote": next_buy_quote,
                 "ladder_spent_quote": ladder_spent_quote,
+                "btd_armed": state.btd_armed,
+                "btd_target_price": btd_target,
                 "unrealized_pnl": unrealized_pnl,
                 "realized_pnl": realized_pnl,
                 "pnl_total": pnl_total,
-                "realized_pnl_total": realized_pnl_total,                "profit_reserve_coin": reserves.get("profit_reserve"),
+                "realized_pnl_total": realized_pnl_total,
+                "profit_reserve_coin": reserves.get("profit_reserve"),
                 "bnb_reserve_for_fees": reserves.get("bnb_reserve"),
                 "fees_paid": fees,
                 "scalp_enabled": bool(state.scalp.enabled),
