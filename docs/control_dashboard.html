@@ -179,7 +179,24 @@
     .pnl-neg { color: var(--danger); }
     .muted { color: var(--muted); font-size: 0.92rem; }
 
-    .ladder-badges { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+    .ladder-steps { margin-top: 4px; }
+    .ladder-steps summary {
+      list-style: none;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 8px;
+      border-radius: 8px;
+      border: 1px solid #334155;
+      background: rgba(45, 140, 240, 0.08);
+      color: var(--text);
+      font-weight: 600;
+      user-select: none;
+    }
+    .ladder-steps summary::-webkit-details-marker { display: none; }
+    .ladder-steps[open] summary { border-color: var(--accent); background: rgba(45, 140, 240, 0.14); }
+    .ladder-badges { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
     .ladder-badge {
       display: inline-block;
       padding: 4px 6px;
@@ -380,13 +397,19 @@
 
     function ladderBadges(legs) {
       if (!Array.isArray(legs) || !legs.length) return "";
+      const filled = legs.filter((leg) => leg.filled).length;
+      const summaryText = `View ladder (${filled}/${legs.length} filled)`;
       const items = legs.map((leg) => {
         const cls = leg.filled ? "ladder-badge filled" : "ladder-badge";
         const price = fmtNumber(leg.price);
         const quote = fmtNumber(leg.quote, 2);
         return `<span class="${cls}" title="Step ${leg.idx}: ${price} / ${quote} quote">#${leg.idx} ${quote}</span>`;
       });
-      return `<div class="ladder-badges">${items.join("")}</div>`;
+      return `
+        <details class="ladder-steps">
+          <summary>${summaryText}</summary>
+          <div class="ladder-badges">${items.join("")}</div>
+        </details>`;
     }
 
     function feesLabel(fees) {
