@@ -430,7 +430,13 @@ class StrategyState:
         spent_micro = self._micro_committed_quote()
         remaining_quote = max(effective_alloc - spent_ladder - spent_scalp - spent_micro, 0.0)
         remaining_micro_cap = max(target_alloc - spent_micro, 0.0)
-        return min(remaining_micro_cap, remaining_quote)
+        ladder_cap = 0.0
+        if 0 <= self.ladder_next_idx < len(self.ladder_amounts_quote):
+            ladder_cap = max(self.ladder_amounts_quote[self.ladder_next_idx], 0.0)
+        cap = remaining_micro_cap
+        if ladder_cap > 0:
+            cap = min(cap, ladder_cap)
+        return min(cap, remaining_quote)
 
     def _disarm_btd(self):
         self.btd_armed = False
