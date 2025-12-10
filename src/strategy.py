@@ -419,7 +419,8 @@ class StrategyState:
         spent_ladder = sum(self.ladder_amounts_quote[:self.ladder_next_idx])
         spent_scalp = self._scalp_committed_quote()
         remaining_quote = max(effective_alloc - spent_ladder - spent_scalp, 0.0)
-        return min(target_alloc, remaining_quote)
+        remaining_scalp_cap = max(target_alloc - spent_scalp, 0.0)
+        return min(remaining_scalp_cap, remaining_quote)
 
     def _remaining_micro_allocation(self) -> float:
         effective_alloc = min(self.b_alloc, self.buy.max_total_quote) if self.buy.max_total_quote > 0 else self.b_alloc
@@ -428,7 +429,8 @@ class StrategyState:
         spent_scalp = self._scalp_committed_quote()
         spent_micro = self._micro_committed_quote()
         remaining_quote = max(effective_alloc - spent_ladder - spent_scalp - spent_micro, 0.0)
-        return min(target_alloc, remaining_quote)
+        remaining_micro_cap = max(target_alloc - spent_micro, 0.0)
+        return min(remaining_micro_cap, remaining_quote)
 
     def _disarm_btd(self):
         self.btd_armed = False
