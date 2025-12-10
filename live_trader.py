@@ -10,7 +10,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Mapping
 
 import requests
 from urllib.parse import parse_qs, urlparse
@@ -770,7 +770,12 @@ def main() -> None:
                     serialised[key] = val
             return serialised
 
+        last_status_line = ""
+        last_pnl_compact = ""
+        last_pnl_total = ""
+
         def log_status(status: Dict[str, object]) -> None:
+            nonlocal last_status_line, last_pnl_compact, last_pnl_total
             parts = [
                 f"price={status['price']:.4f}",
                 f"phase={status['phase']}",
@@ -792,16 +797,23 @@ def main() -> None:
             if status["unrealized_pnl"] is not None:
                 parts.append(f"unrealized={status['unrealized_pnl']:.2f}")
             parts.append(f"realized_total={status['realized_pnl_total']:.2f}")
-            if status.get("scalp_enabled"):
-                parts.append(f"scalp_pos={status.get('scalp_positions', 0)}")
-            if status.get("micro_enabled"):
-                parts.append(
-                    "micro_pos={pos}/swings={swings}/cd={cd}".format(
-                        pos=status.get("micro_positions", 0),
-                        swings=status.get("micro_swings", 0),
-                        cd=status.get("micro_cooldown_until_bar"),
-                    )
+            scalp_enabled = bool(status.get("scalp_enabled"))
+            parts.append(
+                "scalp={state} pos={count}".format(
+                    state="on" if scalp_enabled else "off",
+                    count=status.get("scalp_positions", 0),
                 )
+            )
+
+            micro_enabled = bool(status.get("micro_enabled"))
+            parts.append(
+                "micro={state} pos={pos}/swings={swings}/cd={cd}".format(
+                    state="on" if micro_enabled else "off",
+                    pos=status.get("micro_positions", 0),
+                    swings=status.get("micro_swings", 0),
+                    cd=status.get("micro_cooldown_until_bar"),
+                )
+            )
             profit_reserve = status.get("profit_reserve_coin") or {}
             bnb_reserve = status.get("bnb_reserve_for_fees") or {}
             fees_paid = status.get("fees_paid") or {}
@@ -831,7 +843,10 @@ def main() -> None:
                 )
             except Exception:
                 logging.debug("Unable to format fee snapshot")
-            logging.info("Status | %s", " | ".join(parts))
+            status_line = "Status | " + " | ".join(parts)
+            if status_line != last_status_line:
+                logging.info(status_line)
+                last_status_line = status_line
 
             def _format_pnl(val: Optional[float]) -> str:
                 return f"{val:.2f}" if val is not None else "-"
@@ -854,12 +869,44 @@ def main() -> None:
                 total_unrealized += unrealized or 0.0
 
             total_all = total_realized + total_unrealized
-            logging.info("PnL compact | %s", " | ".join(per_pair_parts))
-            logging.info(
-                "PnL total   | r=%s | u=%s | t=%s",
+            compact_line = "PnL compact | " + " | ".join(per_pair_parts)
+            total_line = "PnL total   | r=%s | u=%s | t=%s" % (
                 _format_pnl(total_realized),
                 _format_pnl(total_unrealized),
                 _format_pnl(total_all),
+            )
+
+            if compact_line != last_pnl_compact or total_line != last_pnl_total:
+                logging.info(compact_line)
+                logging.info(total_line)
+                last_pnl_compact = compact_line
+                last_pnl_total = total_line
+
+        def log_order_summary(side: str, response: Mapping[str, object]) -> None:
+            """Log a concise summary of a Binance order response."""
+
+            def _fallback_quote(resp: Mapping[str, object]) -> float:
+                fills = resp.get("fills") or []
+                try:
+                    return sum(
+                        float(f.get("price", 0.0)) * float(f.get("qty", 0.0)) for f in fills
+                    )
+                except Exception:
+                    return 0.0
+
+            executed_qty = float(response.get("executedQty") or 0.0)
+            quote_spent = response.get("cummulativeQuoteQty")
+            quote_val = float(quote_spent) if quote_spent is not None else _fallback_quote(response)
+            avg_price = quote_val / executed_qty if executed_qty else 0.0
+            logging.info(
+                "TXN %s %s | qty=%.6f | avg=%.4f | quote=%.2f %s | status=%s",
+                side.upper(),
+                pair_cfg.symbol,
+                executed_qty,
+                avg_price,
+                quote_val,
+                pair_cfg.quote,
+                response.get("status"),
             )
 
         startup_status = build_status_snapshot(latest["close"], latest["timestamp"])
@@ -1076,6 +1123,7 @@ def main() -> None:
                                 record_history(ev)
                                 continue
                             logging.info("Order response: %s", json.dumps(response))
+                            log_order_summary("BUY", response)
                             executed_qty = float(response.get("executedQty") or 0.0)
                             fills = response.get("fills") or []
                             profit_allocator.record_fees_from_fills(pair_symbol, fills, pair_cfg.quote)
@@ -1162,6 +1210,7 @@ def main() -> None:
                                     chunk_count,
                                     json.dumps(response),
                                 )
+                                log_order_summary("SELL", response)
                                 if sell_chunk_delay > 0 and idx < chunk_count - 1:
                                     time.sleep(sell_chunk_delay)
                             sell_qty = sold_total
