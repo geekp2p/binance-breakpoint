@@ -328,6 +328,7 @@
               <th>BNB reserve</th>
               <th>Fees</th>
               <th>Next (Buy/Sell)</th>
+              <th>Micro</th>
               <th>Ladder</th>
               <th>Status</th>
               <th>Exit</th>
@@ -557,21 +558,34 @@
               ? `${Math.min(v.ladder_index, v.ladder_total)}/${v.ladder_total}`
               : "-";
           const ladderNextQuote = v.ladder_next_quote ? fmtNumber(v.ladder_next_quote, 2) : "-";
-          const ladderBadgesHtml = ladderBadges(v.ladder_legs, v.price);
-          const actionLabel = v.paused ? "Resume" : "Pause";
-          const actionClass = v.paused ? "btn-secondary" : "btn-danger";
-          const realizedPnl = v.realized_pnl_total ?? v.realized_pnl ?? 0;
-          const cumulativePnl = typeof v.pnl_total === "number" ? v.pnl_total : realizedPnl + (v.unrealized_pnl || 0);
-          const exitLabel = (v.unrealized_pnl || 0) >= 0 ? "Take profit" : "Cut loss";
-          const exitClass = (v.unrealized_pnl || 0) >= 0 ? "" : "btn-danger";
-          const hasPosition = (v.qty || 0) > 0;
-          const exitDisabled = hasPosition ? "" : "disabled";
-          const exitTitle = hasPosition
-            ? "Sell now at market (includes ~0.1% fee)"
-            : "No open position to exit";
-          const profitReserve = v.profit_reserve || v.profit_reserve_coin;
-          const bnbReserve = v.bnb_reserve || v.bnb_reserve_for_fees;
-          const pairFees = v.fees_paid?.pair ?? v.fees_paid?.totals ?? v.fees_paid;
+      const ladderBadgesHtml = ladderBadges(v.ladder_legs, v.price);
+      const actionLabel = v.paused ? "Resume" : "Pause";
+      const actionClass = v.paused ? "btn-secondary" : "btn-danger";
+      const realizedPnl = v.realized_pnl_total ?? v.realized_pnl ?? 0;
+      const cumulativePnl = typeof v.pnl_total === "number" ? v.pnl_total : realizedPnl + (v.unrealized_pnl || 0);
+      const exitLabel = (v.unrealized_pnl || 0) >= 0 ? "Take profit" : "Cut loss";
+      const exitClass = (v.unrealized_pnl || 0) >= 0 ? "" : "btn-danger";
+      const hasPosition = (v.qty || 0) > 0;
+      const exitDisabled = hasPosition ? "" : "disabled";
+      const exitTitle = hasPosition
+        ? "Sell now at market (includes ~0.1% fee)"
+        : "No open position to exit";
+      const profitReserve = v.profit_reserve || v.profit_reserve_coin;
+      const bnbReserve = v.bnb_reserve || v.bnb_reserve_for_fees;
+      const pairFees = v.fees_paid?.pair ?? v.fees_paid?.totals ?? v.fees_paid;
+      const microStateRaw = v.micro_state || (v.micro_positions > 0 ? "waiting_sell" : "idle");
+      const microState = microStateRaw.replace(/_/g, " ");
+      const microPos = fmtNumber(v.micro_position_qty, 6);
+      const microSwings = v.micro_swings ?? 0;
+      const microNextBuy = v.micro_next_buy_price ? fmtNumber(v.micro_next_buy_price) : "-";
+      const microNextSell = v.micro_next_sell_price ? fmtNumber(v.micro_next_sell_price) : "-";
+      const microCool = v.micro_cooldown_until_bar ?? "-";
+      const microCell = `
+        <div class="muted">${microState}</div>
+        <div class="muted">Pos ${microPos} / swings ${microSwings}</div>
+        <div class="muted">Next buy ${microNextBuy}</div>
+        <div class="muted">Next sell ${microNextSell}</div>
+        <div class="muted">CD bar ${microCool}</div>`;
 
           return `
             <tr>
@@ -587,6 +601,7 @@
               <td>${reserveLabel(bnbReserve, { compact: true })}</td>
               <td>${feesLabel(pairFees)}</td>
               <td><div class="muted">Buy: ${nextBuy}</div><div class="muted">BTD: ${buyTheDip}</div><div class="muted">Sell: ${nextSell}</div></td>
+              <td>${microCell}</td>
               <td>${ladder}<div class="muted">Next q: ${ladderNextQuote}</div>${ladderBadgesHtml}</td>
               <td><span class="status ${statusClass}">${statusText}</span></td>
               <td><button class="${exitClass}" data-action="exit" data-symbol="${symbol}" aria-label="${exitLabel}" title="${exitTitle}" ${exitDisabled}>${exitLabel}</button></td>
@@ -608,7 +623,7 @@
         <td>${reserveLabel(totalReserves, { compact: true })}</td>
         <td>${reserveLabel(totalBnb, { compact: true })}</td>
         <td>${feesLabel(feeTotals)}</td>
-        <td colspan="5" class="muted">Aggregated totals</td>
+        <td colspan="6" class="muted">Aggregated totals</td>
       `;
     }
 

@@ -841,6 +841,27 @@ def main() -> None:
             btd_target = None
             if state.btd_armed and state.btd_last_bottom is not None:
                 btd_target = state.btd_last_bottom * (1 + state.btd.limit_offset)
+
+            micro_snapshot = state._micro_snapshot()
+            micro_next_buy = None
+            if micro_snapshot and micro_snapshot.get("ready"):
+                band_span = micro_snapshot.get("high", 0.0) - micro_snapshot.get("low", 0.0)
+                if band_span > 0:
+                    micro_next_buy = micro_snapshot.get("low", 0.0) + band_span * max(
+                        min(getattr(state.micro, "entry_band_pct", 0.0), 1.0), 0.0
+                    )
+            micro_position_qty = sum(float(pos.get("qty", 0.0)) for pos in state.micro_positions)
+            micro_position_cost = sum(float(pos.get("cost", 0.0)) for pos in state.micro_positions)
+            micro_targets = [float(pos.get("target", 0.0)) for pos in state.micro_positions if pos.get("target")]
+            micro_stops = [float(pos.get("stop", 0.0)) for pos in state.micro_positions if pos.get("stop")]
+            micro_next_sell = min(micro_targets) if micro_targets else None
+            micro_next_stop = max(micro_stops) if micro_stops else None
+            micro_state = "waiting_sell" if micro_position_qty > 0 else "idle"
+            if micro_state == "idle" and state.bar_index < state.micro_cooldown_until_bar:
+                micro_state = "cooldown"
+            if micro_state == "idle" and micro_snapshot and micro_snapshot.get("ready"):
+                micro_state = "ready_to_buy"
+
             next_sell_target = None
             if state.Q > 0:
                 if state.phase == PHASE_TRAIL:
@@ -882,9 +903,15 @@ def main() -> None:
                 "scalp_positions": len(state.scalp_positions),
                 "micro_enabled": bool(state.micro.enabled),
                 "micro_positions": len(state.micro_positions),
+                "micro_position_qty": micro_position_qty,
+                "micro_position_cost": micro_position_cost,
                 "micro_swings": state.micro_swings,
                 "micro_cooldown_until_bar": state.micro_cooldown_until_bar,
                 "micro_last_exit_price": state.micro_last_exit_price,
+                "micro_next_buy_price": micro_next_buy,
+                "micro_next_sell_price": micro_next_sell,
+                "micro_next_stop_price": micro_next_stop,
+                "micro_state": micro_state,
             }
 
         def serialise_status(status: Dict[str, object]) -> Dict[str, object]:
@@ -933,11 +960,14 @@ def main() -> None:
 
             micro_enabled = bool(status.get("micro_enabled"))
             parts.append(
-                "micro={state} pos={pos}/swings={swings}/cd={cd}".format(
+                "micro={state} pos={pos}/swings={swings}/cd={cd} next_buy={nb} next_sell={ns} state={mode}".format(
                     state="on" if micro_enabled else "off",
                     pos=status.get("micro_positions", 0),
                     swings=status.get("micro_swings", 0),
                     cd=status.get("micro_cooldown_until_bar"),
+                    nb=status.get("micro_next_buy_price"),
+                    ns=status.get("micro_next_sell_price"),
+                    mode=status.get("micro_state", "-"),
                 )
             )
             profit_reserve = status.get("profit_reserve_coin") or {}

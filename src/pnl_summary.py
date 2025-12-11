@@ -19,6 +19,10 @@ class PnLRow:
     total: float
     qty: Optional[float]
     price: Optional[float]
+    micro_position_qty: Optional[float]
+    micro_swings: Optional[float]
+    micro_next_buy: Optional[float]
+    micro_next_sell: Optional[float]
     path: Path
 
     @classmethod
@@ -29,14 +33,44 @@ class PnLRow:
         price_move = _to_float(status.get("unrealized_pnl"))
         qty = _to_float(status.get("qty"))
         price = _to_float(status.get("price") or payload.get("latest_price"))
+        micro_position_qty = _to_float(status.get("micro_position_qty"), default=None)
+        micro_swings = _to_float(status.get("micro_swings"), default=None)
+        micro_next_buy = _to_float(status.get("micro_next_buy_price"), default=None)
+        micro_next_sell = _to_float(status.get("micro_next_sell_price"), default=None)
         total = realized + price_move
-        return cls(symbol, "savepoint", realized, price_move, total, qty, price, path)
+        return cls(
+            symbol,
+            "savepoint",
+            realized,
+            price_move,
+            total,
+            qty,
+            price,
+            micro_position_qty,
+            micro_swings,
+            micro_next_buy,
+            micro_next_sell,
+            path,
+        )
 
     @classmethod
     def from_summary(cls, path: Path, payload: Dict[str, object]) -> "PnLRow":
         symbol = str(payload.get("symbol") or _symbol_from_name(path.stem)).upper()
         realized = _to_float(payload.get("pnl"))
-        return cls(symbol, "backtest", realized, 0.0, realized, None, None, path)
+        return cls(
+            symbol,
+            "backtest",
+            realized,
+            0.0,
+            realized,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            path,
+        )
 
 
 def _symbol_from_name(name: str) -> str:
@@ -45,11 +79,11 @@ def _symbol_from_name(name: str) -> str:
     return name
 
 
-def _to_float(value: object) -> float:
+def _to_float(value: object, default: float = 0.0) -> float:
     try:
         return float(value)
     except (TypeError, ValueError):
-        return 0.0
+        return default
 
 
 def _load_json(path: Path) -> Optional[Dict[str, object]]:
@@ -117,6 +151,10 @@ def aggregate_by_symbol(rows: Iterable[PnLRow]) -> List[PnLRow]:
                 total=realized + price_move,
                 qty=None,
                 price=None,
+                micro_position_qty=None,
+                micro_swings=None,
+                micro_next_buy=None,
+                micro_next_sell=None,
                 path=Path(symbol),
             )
         )
@@ -126,7 +164,18 @@ def aggregate_by_symbol(rows: Iterable[PnLRow]) -> List[PnLRow]:
 def render_table(rows: Sequence[PnLRow], *, include_path: bool = False) -> str:
     if not rows:
         return "(ไม่มีข้อมูล)"
+
+    has_micro = any(
+        (r.micro_position_qty is not None)
+        or (r.micro_swings is not None)
+        or (r.micro_next_buy is not None)
+        or (r.micro_next_sell is not None)
+        for r in rows
+    )
+
     headers = ["Symbol", "Source", "Realized", "PriceMove", "Total", "Qty", "Price"]
+    if has_micro:
+        headers.extend(["MicroPos", "MicroSwings", "MicroNextBuy", "MicroNextSell"])
     if include_path:
         headers.append("Path")
 
@@ -140,6 +189,15 @@ def render_table(rows: Sequence[PnLRow], *, include_path: bool = False) -> str:
             f"{row.qty:,.6f}" if row.qty else "-",
             f"{row.price:,.4f}" if row.price else "-",
         ]
+        if has_micro:
+            cells.extend(
+                [
+                    f"{row.micro_position_qty:,.6f}" if row.micro_position_qty is not None else "-",
+                    f"{row.micro_swings:,.0f}" if row.micro_swings is not None else "-",
+                    f"{row.micro_next_buy:,.4f}" if row.micro_next_buy is not None else "-",
+                    f"{row.micro_next_sell:,.4f}" if row.micro_next_sell is not None else "-",
+                ]
+            )
         if include_path:
             cells.append(str(row.path))
         return cells
