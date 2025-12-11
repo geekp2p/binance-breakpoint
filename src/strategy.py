@@ -101,6 +101,7 @@ class MicroOscillationConf:
     stop_break_pct: float = 0.005
     order_pct_allocation: float = 0.15
     cooldown_bars: int = 5
+    reentry_drop_pct: float = 0.002    
 
 # --- Scaffolds ---
 @dataclass
@@ -203,7 +204,8 @@ class StrategyState:
     micro_last_direction: Optional[int] = None
     micro_swings: int = 0
     micro_cooldown_until_bar: int = 0
-    micro_positions: List[Dict[str, float]] = field(default_factory=list)  
+    micro_positions: List[Dict[str, float]] = field(default_factory=list)
+    micro_last_exit_price: Optional[float] = None 
 
     def _remaining_quote_allocation(self) -> float:
         effective_alloc = min(self.b_alloc, self.buy.max_total_quote) if self.buy.max_total_quote > 0 else self.b_alloc
@@ -668,6 +670,23 @@ class StrategyState:
         entry = snap["low"] + band_span * max(min(self.micro.entry_band_pct, 1.0), 0.0)
         if l > entry:
             return
+        
+        if (
+            self.micro_last_exit_price is not None
+            and entry >= self.micro_last_exit_price * (1 - max(self.micro.reentry_drop_pct, 0.0))
+        ):
+            log_events.append(
+                {
+                    "ts": ts,
+                    "event": "MICRO_BUY_SKIPPED",
+                    "reason": "NEED_PULLBACK",
+                    "entry": entry,
+                    "last_exit": self.micro_last_exit_price,
+                }
+            )
+            self.micro_cooldown_until_bar = self.bar_index + max(1, int(self.micro.cooldown_bars))
+            return        
+
         order_quote = self._remaining_micro_allocation()
         if order_quote <= 0:
             log_events.append({
@@ -698,6 +717,7 @@ class StrategyState:
         })
         self.micro_swings = 0
         self.micro_cooldown_until_bar = self.bar_index + max(1, int(self.micro.cooldown_bars))
+        self.micro_last_exit_price = None
         log_events.append({
             "ts": ts,
             "event": "MICRO_BUY",
@@ -742,6 +762,8 @@ class StrategyState:
                 pnl = proceeds - pos["cost"]
                 self.Q = max(self.Q - qty, 0.0)
                 self.C = max(self.C - pos["cost"], 0.0)
+                self.micro_last_exit_price = exit_price
+                self.micro_cooldown_until_bar = self.bar_index + max(1, int(self.micro.cooldown_bars))
                 log_events.append({
                     "ts": ts,
                     "event": f"MICRO_{reason}",
@@ -749,6 +771,7 @@ class StrategyState:
                     "qty": qty,
                     "proceeds": proceeds,
                     "pnl": pnl,
+                    "cost": pos["cost"],                    
                 })
             else:
                 remaining_positions.append(pos)

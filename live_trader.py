@@ -615,6 +615,82 @@ def main() -> None:
             if ev.get("qty") is None and ev.get("q") is not None:
                 ev["qty"] = ev["q"]
 
+        def _execute_micro_exit(ev: Dict[str, object]) -> None:
+            nonlocal realized_pnl_total
+            qty = float(ev.get("qty") or 0.0)
+            if qty <= 0:
+                record_history(ev)
+                return
+
+            target_price = float(ev.get("price") or 0.0)
+            cost = float(ev.get("cost") or 0.0)
+            sell_qty = qty
+            if client and base_asset:
+                try:
+                    available = client.get_free_balance(base_asset)
+                    if available < sell_qty:
+                        logging.warning(
+                            "Requested micro sell qty %.6f exceeds available %.6f; clamping",
+                            sell_qty,
+                            available,
+                        )
+                        sell_qty = max(available, 0.0)
+                except Exception as exc:  # pylint: disable=broad-except
+                    logging.warning("Unable to fetch %s balance: %s", base_asset, exc)
+
+            if sell_qty <= 0:
+                record_history(ev)
+                return
+
+            executed_qty = sell_qty
+            fill_price = target_price
+            fills: list[dict] = []
+            if client:
+                response = client.market_sell(pair_cfg.symbol, sell_qty)
+                logging.info("Micro sell response: %s", json.dumps(response))
+                fills = response.get("fills") or []
+                profit_allocator.record_fees_from_fills(pair_symbol, fills, pair_cfg.quote)
+                executed_qty = float(response.get("executedQty") or sell_qty)
+                fill_price = _weighted_fill_price(response) or target_price or last_close_price
+            else:
+                fill_price = target_price or last_close_price
+
+            executed_qty = max(executed_qty, 0.0)
+            if executed_qty <= 0:
+                record_history(ev)
+                return
+
+            if executed_qty < qty:
+                unsold = qty - executed_qty
+                state.Q += unsold
+                state.C += cost * (unsold / qty)
+
+            proceeds = executed_qty * fill_price * (1 - state.fees_sell)
+            effective_cost = cost * (executed_qty / qty)
+            realized_pnl = proceeds - effective_cost
+            realized_pnl_total += realized_pnl
+
+            ev["executed_qty"] = executed_qty
+            ev["fill_price"] = fill_price
+            ev["proceeds"] = proceeds
+            ev["pnl"] = realized_pnl
+            ev["realized_pnl_total"] = realized_pnl_total
+            if fills:
+                ev["fills"] = fills
+
+            if realized_pnl > 0:
+                profit_allocator.allocate_profit(
+                    realized_pnl,
+                    pair_symbol=pair_symbol,
+                    discount_symbol=discount_symbol,
+                    price_lookup=price_lookup,
+                    client=None if args.dry_run else client,
+                    dry_run=args.dry_run,
+                    activity_logger=record_history,
+                )
+
+            record_history(ev)
+
         def clamp_buy_to_available(
             ev: Dict[str, object],
             available_quote: Optional[float],
@@ -808,6 +884,7 @@ def main() -> None:
                 "micro_positions": len(state.micro_positions),
                 "micro_swings": state.micro_swings,
                 "micro_cooldown_until_bar": state.micro_cooldown_until_bar,
+                "micro_last_exit_price": state.micro_last_exit_price,
             }
 
         def serialise_status(status: Dict[str, object]) -> Dict[str, object]:
@@ -1231,6 +1308,8 @@ def main() -> None:
                                 except Exception:
                                     logging.debug("Unable to align micro fill with on-ledger position", exc_info=True)
                         record_history(ev)
+                    elif evt and evt.startswith("MICRO_") and evt != "MICRO_BUY":
+                        _execute_micro_exit(ev)
                     else:
                         record_history(ev)
                         if evt == "BTD_ORDER":
