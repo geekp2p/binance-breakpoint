@@ -97,6 +97,17 @@ def compute_pnl(usdt: float, df: pd.DataFrame) -> Tuple[float, float]:
     return pnl_pct, pnl_usd
 
 
+def compute_levels(df: pd.DataFrame) -> Dict[str, float]:
+    """Return simple buy-the-dip / sell-the-rip reference levels from recent price action."""
+    if df is None or df.empty:
+        return {}
+    recent = df.tail(min(len(df), 14))
+    current = float(recent.iloc[-1]["close"])
+    buy_dip = float(recent["low"].min())
+    sell_rip = float(recent["high"].max())
+    return {"current": current, "buy_dip": buy_dip, "sell_rip": sell_rip}
+
+
 def normalize_intervals(intervals: Iterable[str] | None) -> List[str]:
     if not intervals:
         return list(WINDOW_LOOKBACK_DAYS.keys())
@@ -155,6 +166,7 @@ def backtest_endpoint():
     symbols = normalize_symbols(payload.get("symbols"))
 
     results: Dict[str, Dict[str, Dict[str, float]]] = {}
+    levels: Dict[str, Dict[str, float]] = {}
     scores: List[Dict[str, Any]] = []
     history_cache: Dict[Tuple[str, int], pd.DataFrame] = {}
 
@@ -162,6 +174,7 @@ def backtest_endpoint():
         sym_res: Dict[str, Dict[str, float]] = {}
         total_usd = 0.0
         total_pct = 0.0
+        df_for_levels: pd.DataFrame | None = None
         for iv in intervals:
             lookback_days = WINDOW_LOOKBACK_DAYS[iv]
             try:
@@ -171,6 +184,8 @@ def backtest_endpoint():
                     history_cache[(sym, lookback_days)] = df
             except Exception:
                 continue
+            if df_for_levels is None and df is not None and not df.empty:
+                df_for_levels = df
             pnl_pct, pnl_usd = compute_pnl(usdt, df)
             sym_res[iv] = {"pnl_pct": pnl_pct, "pnl_usd": pnl_usd}
             total_usd += pnl_usd
@@ -178,6 +193,7 @@ def backtest_endpoint():
         if sym_res:
             results[sym] = sym_res
             scores.append({"symbol": sym, "pnl_usd": total_usd, "pnl_pct": total_pct})
+            levels[sym] = compute_levels(df_for_levels)
 
     top_symbols = prepare_top_lists(scores, top_n)
 
@@ -186,6 +202,7 @@ def backtest_endpoint():
         "params": {"usdt": usdt, "symbols": symbols, "intervals": intervals, "top_n": top_n},
         "results": results,
         "top_symbols": top_symbols,
+        "levels": levels,
     }
     return jsonify(response)
 

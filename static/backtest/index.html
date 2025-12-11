@@ -63,6 +63,18 @@
         <tbody></tbody>
       </table>
     </div>
+    <div>
+      <h3>Buy-the-Dip / Sell-the-Rip Levels</h3>
+      <table id="levels-table" aria-label="Dip and rip levels">
+        <thead><tr><th>Symbol</th><th>Current</th><th>Buy the dip</th><th>Sell the rip</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div style="margin-top: 1.5rem; background: #fff; padding: 1rem; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,0.1);">
+    <h3>Suggested prompt for micro-trade recap</h3>
+    <p style="white-space: pre-wrap; font-family: monospace; background: #f0f4f8; padding: 0.8rem; border-radius: 6px;">Describe only the executed micro-trades. For each filled micro entry/exit pair, show side, size, entry/exit prices, holding time, and PnL in USDT and %. Summarize how the micro swings affected the current position size and average cost compared to base accumulation. Highlight fees and whether any cooldowns or swing counts changed.</p>
   </div>
 
   <script>
@@ -71,6 +83,7 @@
     const runBtn = document.getElementById('run-btn');
     const topTableBody = document.querySelector('#top-table tbody');
     const resultsTableBody = document.querySelector('#results-table tbody');
+    const levelsTableBody = document.querySelector('#levels-table tbody');
     const downloads = document.getElementById('downloads');
 
     function setStatus(text, spinning=false) {
@@ -110,6 +123,7 @@
       runBtn.disabled = true;
       topTableBody.innerHTML = '';
       resultsTableBody.innerHTML = '';
+      levelsTableBody.innerHTML = '';
       downloads.innerHTML = '';
       try {
         const resp = await fetch(`${apiBase.replace(/\/$/, '')}/backtest`, {
@@ -127,6 +141,7 @@
           topTableBody.appendChild(tr);
         });
         const results = data.results || {};
+        const levels = data.levels || {};
         Object.keys(results).forEach(sym => {
           const windows = results[sym];
           Object.keys(windows).forEach(win => {
@@ -135,6 +150,15 @@
             tr.innerHTML = `<td>${sym}</td><td>${win}</td><td>${row.pnl_usd.toFixed(2)}</td><td>${row.pnl_pct.toFixed(2)}%</td>`;
             resultsTableBody.appendChild(tr);
           });
+        });
+        Object.keys(levels).forEach(sym => {
+          const lvl = levels[sym] || {};
+          const tr = document.createElement('tr');
+          const current = Number(lvl.current || 0);
+          const buy = Number(lvl.buy_dip || 0);
+          const sell = Number(lvl.sell_rip || 0);
+          tr.innerHTML = `<td>${sym}</td><td>${current ? current.toFixed(4) : '-'}</td><td>${buy ? buy.toFixed(4) : '-'}</td><td>${sell ? sell.toFixed(4) : '-'}</td>`;
+          levelsTableBody.appendChild(tr);
         });
         const dl100json = buildDownloadLink('top100', tops.top100 || [], 'json');
         const dl100csv = buildDownloadLink('top100', tops.top100 || [], 'csv');
