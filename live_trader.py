@@ -1191,7 +1191,9 @@ def main() -> None:
                                     except (TypeError, ValueError):
                                         continue
                             net_qty = max(executed_qty - commission_base, 0.0)
+                            executed_quote = quote_val
                             expected_qty = float(ev.get("q") or ev.get("qty") or 0.0)
+                            expected_quote = float(ev.get("amt_q") or 0.0)
                             if net_qty < expected_qty:
                                 adjustment = net_qty - expected_qty
                                 state.Q += adjustment
@@ -1201,6 +1203,28 @@ def main() -> None:
                                     net_qty,
                                     adjustment,
                                 )
+                            # Align tracked position + cost with actual fill for micro buys.
+                            # Strategy books the expected qty/cost optimistically before the
+                            # exchange fill; adjust the most recent micro position to avoid
+                            # drifting inventory/cost when Binance returns slightly different
+                            # fill sizes.
+                            if evt == "MICRO_BUY" and state.micro_positions:
+                                pos = state.micro_positions[-1]
+                                try:
+                                    if expected_qty > 0 and net_qty > 0:
+                                        scale = net_qty / expected_qty
+                                        pos["qty"] *= scale
+                                        ev["qty"] = net_qty
+                                        ev["q"] = net_qty
+                                    if expected_quote > 0 and executed_quote > 0:
+                                        cost_scale = executed_quote / expected_quote
+                                        pos["cost"] *= cost_scale
+                                        # Keep book cost in sync with realized spend
+                                        expected_cost = expected_quote * (1 + state.fees_buy)
+                                        actual_cost = executed_quote * (1 + state.fees_buy)
+                                        state.C += actual_cost - expected_cost
+                                except Exception:
+                                    logging.debug("Unable to align micro fill with on-ledger position", exc_info=True)
                         record_history(ev)
                     else:
                         record_history(ev)
