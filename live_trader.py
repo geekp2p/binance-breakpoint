@@ -931,21 +931,26 @@ def main() -> None:
                 last_pnl_compact = compact_line
                 last_pnl_total = total_line
 
+        def _extract_executed_quote(response: Mapping[str, object]) -> float:
+            fills = response.get("fills") or []
+            quote_spent = response.get("cummulativeQuoteQty")
+            try:
+                if quote_spent is not None:
+                    return float(quote_spent)
+            except (TypeError, ValueError):
+                pass
+            try:
+                return sum(
+                    float(f.get("price", 0.0)) * float(f.get("qty", 0.0)) for f in fills
+                )
+            except Exception:
+                return 0.0
+
         def log_order_summary(side: str, response: Mapping[str, object]) -> None:
             """Log a concise summary of a Binance order response."""
 
-            def _fallback_quote(resp: Mapping[str, object]) -> float:
-                fills = resp.get("fills") or []
-                try:
-                    return sum(
-                        float(f.get("price", 0.0)) * float(f.get("qty", 0.0)) for f in fills
-                    )
-                except Exception:
-                    return 0.0
-
             executed_qty = float(response.get("executedQty") or 0.0)
-            quote_spent = response.get("cummulativeQuoteQty")
-            quote_val = float(quote_spent) if quote_spent is not None else _fallback_quote(response)
+            quote_val = _extract_executed_quote(response)
             avg_price = quote_val / executed_qty if executed_qty else 0.0
             logging.info(
                 "TXN %s %s | qty=%.6f | avg=%.4f | quote=%.2f %s | status=%s",
@@ -1191,7 +1196,7 @@ def main() -> None:
                                     except (TypeError, ValueError):
                                         continue
                             net_qty = max(executed_qty - commission_base, 0.0)
-                            executed_quote = quote_val
+                            executed_quote = _extract_executed_quote(response)
                             expected_qty = float(ev.get("q") or ev.get("qty") or 0.0)
                             expected_quote = float(ev.get("amt_q") or 0.0)
                             if net_qty < expected_qty:
