@@ -1369,6 +1369,84 @@ def main() -> None:
                         actionable["source_event"] = "BTD_ORDER"
                         ev = actionable
                         evt = "BUY"
+                    elif evt == "SAH_ORDER":
+                        # Auto-execute Sell-the-Rip orders by placing a market sell
+                        # for the suggested quantity, then reconciling our tracked
+                        # inventory/cost basis with the actual fill.
+                        hinted_price = float(ev.get("order_price") or 0.0) or last_close_price
+                        requested_qty = float(ev.get("order_qty") or ev.get("qty") or 0.0)
+                        if requested_qty <= 0 or state.Q <= 0:
+                            record_history(ev)
+                            continue
+
+                        sell_qty = min(requested_qty, state.Q)
+                        if client and base_asset:
+                            try:
+                                available = client.get_free_balance(base_asset)
+                                if available < sell_qty:
+                                    logging.warning(
+                                        "Requested SAH sell qty %.6f exceeds available %.6f; clamping",
+                                        sell_qty,
+                                        available,
+                                    )
+                                    sell_qty = max(available, 0.0)
+                            except Exception as exc:  # pylint: disable=broad-except
+                                logging.warning("Unable to fetch %s balance: %s", base_asset, exc)
+
+                        if sell_qty <= 0:
+                            record_history(ev)
+                            continue
+
+                        fills: list[dict] = []
+                        executed_qty = sell_qty
+                        fill_price = hinted_price
+                        if client:
+                            try:
+                                response = client.market_sell(pair_cfg.symbol, sell_qty)
+                            except requests.RequestException as exc:
+                                logging.error("SAH market sell failed: %s", exc)
+                                record_history({**ev, "event": "SAH_ORDER_FAILED", "reason": str(exc)})
+                                continue
+                            logging.info("SAH sell response: %s", json.dumps(response))
+                            fills = response.get("fills") or []
+                            profit_allocator.record_fees_from_fills(pair_symbol, fills, pair_cfg.quote)
+                            executed_qty = float(response.get("executedQty") or sell_qty)
+                            fill_price = _weighted_fill_price(response) or hinted_price
+
+                        prev_qty = state.Q
+                        cost_share = state.C * (executed_qty / prev_qty) if prev_qty > 0 else 0.0
+                        proceeds_gross = executed_qty * fill_price
+                        proceeds_net = proceeds_gross * (1 - state.fees_sell)
+                        realized_pnl = proceeds_net - cost_share
+
+                        state.Q = max(prev_qty - executed_qty, 0.0)
+                        state.C = max(state.C - cost_share, 0.0)
+                        realized_pnl_total += realized_pnl
+
+                        sah_event = {
+                            **ev,
+                            "event": "SAH_SELL",
+                            "executed_qty": executed_qty,
+                            "fill_price": fill_price,
+                            "gross_proceeds": proceeds_gross,
+                            "net_proceeds": proceeds_net,
+                            "pnl": realized_pnl,
+                            "realized_pnl_total": realized_pnl_total,
+                        }
+
+                        if realized_pnl > 0:
+                            profit_allocator.allocate_profit(
+                                realized_pnl,
+                                pair_symbol=pair_symbol,
+                                discount_symbol=discount_symbol,
+                                price_lookup=price_lookup,
+                                client=None if args.dry_run else client,
+                                dry_run=args.dry_run,
+                                activity_logger=record_history,
+                            )
+
+                        record_history(sah_event)
+                        continue
                     if evt in {"BUY", "SCALP_BUY", "MICRO_BUY"}:
                         _normalise_buy_event(ev)
                         quote_amt = float(ev.get("amt_q", 0.0))
