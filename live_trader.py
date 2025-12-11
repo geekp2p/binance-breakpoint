@@ -1348,6 +1348,27 @@ def main() -> None:
                 for ev in new_events:
                     _log_event(ev)
                     evt = ev.get("event")
+                    if evt == "BTD_ORDER":
+                        # Auto-submit Buy-the-Dip orders instead of just logging them.
+                        # Map the scaffolded event into a standard BUY flow so cost/qty
+                        # booking, balance clamping, and history logging stay consistent
+                        # with ladder/scalp/micro purchases.
+                        actionable = dict(ev)
+                        _normalise_buy_event(actionable)
+                        prev_qty = state.Q
+                        qty = float(actionable.get("q") or actionable.get("qty") or 0.0)
+                        amt_q = float(actionable.get("amt_q", 0.0))
+                        cost = amt_q * (1 + state.fees_buy)
+                        state.Q += qty
+                        state.C += cost
+                        if prev_qty <= 0 < state.Q:
+                            state.round_start_ts = ts
+                        actionable["event"] = "BUY"
+                        actionable["reason"] = "BUY_THE_DIP"
+                        actionable["hint_price"] = actionable.get("order_price")
+                        actionable["source_event"] = "BTD_ORDER"
+                        ev = actionable
+                        evt = "BUY"
                     if evt in {"BUY", "SCALP_BUY", "MICRO_BUY"}:
                         _normalise_buy_event(ev)
                         quote_amt = float(ev.get("amt_q", 0.0))
