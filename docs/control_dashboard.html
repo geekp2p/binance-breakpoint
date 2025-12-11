@@ -220,6 +220,35 @@
       word-break: break-all;
     }
 
+    .log-wrapper {
+      margin-top: 16px;
+    }
+
+    .log-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 6px;
+    }
+
+    .log-feed {
+      background: rgba(15, 23, 42, 0.7);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      border-radius: 12px;
+      padding: 12px;
+      font-family: "JetBrains Mono", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+      font-size: 0.9rem;
+      max-height: 340px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      line-height: 1.3;
+    }
+
+    .log-line { color: var(--text); }
+    .log-line .sym { color: var(--accent); font-weight: 700; }
+    .log-line .kind { color: var(--muted); }
+
     .phase {
       font-size: 0.88rem;
       font-weight: 700;
@@ -363,6 +392,14 @@
       </div>
     </div>
 
+    <div class="card log-wrapper">
+      <div class="log-header">
+        <h3 style="margin:0;">Recent activity</h3>
+        <div class="pill" id="logMeta">-</div>
+      </div>
+      <div class="log-feed" id="logFeed" aria-live="polite"></div>
+    </div>
+
     <div class="footer">
       <span class="pill">Data from /health</span>
       <span id="lastUpdated">-</span>
@@ -373,6 +410,8 @@
     const apiBaseEl = document.getElementById("apiBase");
     const rowsEl = document.getElementById("rows");
     const planRowsEl = document.getElementById("planRows");
+    const logFeedEl = document.getElementById("logFeed");
+    const logMetaEl = document.getElementById("logMeta");
     const errorEl = document.getElementById("error");
     const metaEl = document.getElementById("meta");
     const proxyToggle = document.getElementById("useProxy");
@@ -684,6 +723,8 @@
 
       planRowsEl.innerHTML = entries.map(([symbol, v]) => planRow(symbol, v)).join("");
 
+      renderLogs(data.logs || []);
+
       const totalsRow = document.getElementById("totalsRow");
       totalsRow.innerHTML = `
         <td><strong>ALL</strong></td>
@@ -710,6 +751,25 @@
       if (val === null || val === undefined) return "-";
       const cls = val >= 0 ? "pnl-pos" : "pnl-neg";
       return `<span class="${cls}">${fmtNumber(val, 2)}</span>`;
+    }
+
+    const escapeHtml = (value) => String(value)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+
+    function renderLogs(logs) {
+      if (!logFeedEl || !logMetaEl) return;
+      const items = Array.isArray(logs) ? logs.slice(-1000) : [];
+      logMetaEl.textContent = `${items.length} recent`;
+      const lines = items.map((entry) => {
+        const ts = entry.ts ? new Date(entry.ts).toLocaleTimeString() : "";
+        const sym = entry.symbol ? `[${entry.symbol}]` : "";
+        const kind = entry.kind ? String(entry.kind).toUpperCase() : "";
+        const msg = entry.msg ?? "";
+        return `<div class="log-line"><span class="kind">${escapeHtml(ts)}</span> <span class="sym">${escapeHtml(sym)}</span> ${escapeHtml(kind)} ${escapeHtml(msg)}</div>`;
+      });
+      logFeedEl.innerHTML = lines.join("\n");
     }
 
     rowsEl.addEventListener("click", async (ev) => {

@@ -6,6 +6,7 @@ import math
 import os
 import time
 import threading
+from collections import deque
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
@@ -117,6 +118,7 @@ class ControlCenter:
         self._status: Dict[str, Dict[str, object]] = {sym: {} for sym in symbols}
         self._paused: Dict[str, threading.Event] = {sym: threading.Event() for sym in symbols}
         self._sell_requested: Dict[str, threading.Event] = {sym: threading.Event() for sym in symbols}
+        self._logs: deque[Dict[str, object]] = deque(maxlen=1000)
 
     def snapshot(self) -> Dict[str, Dict[str, object]]:
         with self._lock:
@@ -128,6 +130,34 @@ class ControlCenter:
                 }
                 for sym, status in self._status.items()
             }
+
+    def logs(self, limit: int = 1000) -> List[Dict[str, object]]:
+        if limit <= 0:
+            return []
+        limit = min(limit, 1000)
+        with self._lock:
+            items = list(self._logs)
+        return items[-limit:]
+
+    def add_log(
+        self,
+        message: str,
+        *,
+        symbol: Optional[str] = None,
+        kind: str = "info",
+        ts: Optional[datetime] = None,
+    ) -> None:
+        timestamp = ts or datetime.now(timezone.utc)
+        if not isinstance(timestamp, datetime):
+            timestamp = datetime.now(timezone.utc)
+        entry = {
+            "ts": timestamp.isoformat(),
+            "msg": message,
+            "symbol": symbol,
+            "kind": kind,
+        }
+        with self._lock:
+            self._logs.append(entry)
 
     def update_status(self, symbol: str, status: Dict[str, object]) -> None:
         with self._lock:
@@ -196,6 +226,7 @@ def create_http_handler(control: ControlCenter):
 
         def do_GET(self) -> None:  # noqa: N802
             parsed = urlparse(self.path)
+            params = parse_qs(parsed.query)
             if parsed.path == "/health":
                 snapshot = control.snapshot()
 
@@ -270,7 +301,20 @@ def create_http_handler(control: ControlCenter):
                     _merge_other(totals_other, (fee_totals or {}).get("other", {}))
 
                 totals["pnl_total"] = totals["realized_pnl"] + totals["unrealized_pnl"]
-                payload = {"status": "ok", "pairs": pairs, "totals": totals}
+                log_limit_raw = (params.get("log_limit") or [None])[0]
+                log_limit = 1000
+                if log_limit_raw is not None:
+                    try:
+                        log_limit = max(0, min(1000, int(log_limit_raw)))
+                    except ValueError:
+                        log_limit = 1000
+
+                payload = {
+                    "status": "ok",
+                    "pairs": pairs,
+                    "totals": totals,
+                    "logs": control.logs(log_limit),
+                }
                 self._json(200, payload)
                 return
             self._json(404, {"error": "not found"})
@@ -930,37 +974,36 @@ def main() -> None:
         def log_status(status: Dict[str, object]) -> None:
             nonlocal last_status_line, last_pnl_compact, last_pnl_total
             parts = [
-                f"price={status['price']:.4f}",
-                f"phase={status['phase']}",
-                f"stage={status['stage']}",
-                f"qty={status['qty']:.6f}",
+                f"p={status['price']:.4f}",
+                f"ph={status['phase']}#{status['stage']}",
+                f"q={status['qty']:.6f}",
             ]
             if status["avg_price"] is not None:
                 parts.append(f"avg={status['avg_price']:.4f}")
             if status["p_be"] is not None:
-                parts.append(f"P_BE={status['p_be']:.4f}")
+                parts.append(f"be={status['p_be']:.4f}")
             if status["floor_price"] is not None:
-                parts.append(f"floor={status['floor_price']:.4f}")
+                parts.append(f"flr={status['floor_price']:.4f}")
             if status["next_buy_price"] is not None:
-                parts.append(f"next_buy={status['next_buy_price']:.4f}")
+                parts.append(f"nb={status['next_buy_price']:.4f}")
             if status["next_buy_quote"] is not None:
-                parts.append(f"next_buy_q={status['next_buy_quote']:.2f}")
+                parts.append(f"nbq={status['next_buy_quote']:.2f}")
             if status["next_sell_price"] is not None:
-                parts.append(f"sell_at={status['next_sell_price']:.4f}")
+                parts.append(f"ns={status['next_sell_price']:.4f}")
             if status["unrealized_pnl"] is not None:
-                parts.append(f"unrealized={status['unrealized_pnl']:.2f}")
-            parts.append(f"realized_total={status['realized_pnl_total']:.2f}")
+                parts.append(f"u={status['unrealized_pnl']:.2f}")
+            parts.append(f"rT={status['realized_pnl_total']:.2f}")
             scalp_enabled = bool(status.get("scalp_enabled"))
             parts.append(
-                "scalp={state} pos={count}".format(
+                "scalp={state}{count}".format(
                     state="on" if scalp_enabled else "off",
-                    count=status.get("scalp_positions", 0),
+                    count=f"({status.get('scalp_positions', 0)})",
                 )
             )
 
             micro_enabled = bool(status.get("micro_enabled"))
             parts.append(
-                "micro={state} pos={pos}/swings={swings}/cd={cd} next_buy={nb} next_sell={ns} state={mode}".format(
+                "micro={state} pos={pos} sw={swings} cd={cd} nb={nb} ns={ns} st={mode}".format(
                     state="on" if micro_enabled else "off",
                     pos=status.get("micro_positions", 0),
                     swings=status.get("micro_swings", 0),
@@ -999,7 +1042,7 @@ def main() -> None:
                 )
             except Exception:
                 logging.debug("Unable to format fee snapshot")
-            status_line = "Status | " + " | ".join(parts)
+            status_line = f"ST {pair_cfg.symbol} | " + " | ".join(parts)
             if status_line != last_status_line:
                 logging.info(status_line)
                 last_status_line = status_line
@@ -1025,8 +1068,8 @@ def main() -> None:
                 total_unrealized += unrealized or 0.0
 
             total_all = total_realized + total_unrealized
-            compact_line = "PnL compact | " + " | ".join(per_pair_parts)
-            total_line = "PnL total   | r=%s | u=%s | t=%s" % (
+            compact_line = "PnL | " + " | ".join(per_pair_parts)
+            total_line = "PnL sum | r=%s | u=%s | t=%s" % (
                 _format_pnl(total_realized),
                 _format_pnl(total_unrealized),
                 _format_pnl(total_all),
@@ -1059,6 +1102,11 @@ def main() -> None:
             executed_qty = float(response.get("executedQty") or 0.0)
             quote_val = _extract_executed_quote(response)
             avg_price = quote_val / executed_qty if executed_qty else 0.0
+            control.add_log(
+                f"TXN {side.upper()} q={executed_qty:.4f} @ {avg_price:.4f} ({quote_val:.2f} {pair_cfg.quote}) {response.get('status')}",
+                symbol=pair_cfg.symbol,
+                kind="order",
+            )
             logging.info(
                 "TXN %s %s | qty=%.6f | avg=%.4f | quote=%.2f %s | status=%s",
                 side.upper(),
@@ -1070,10 +1118,63 @@ def main() -> None:
                 response.get("status"),
             )
 
+        def _coerce_ts(ts_val: object) -> datetime:
+            if isinstance(ts_val, datetime):
+                return ts_val
+            if isinstance(ts_val, (int, float)):
+                try:
+                    return datetime.fromtimestamp(float(ts_val), tz=timezone.utc)
+                except Exception:
+                    return datetime.now(timezone.utc)
+            if isinstance(ts_val, str):
+                try:
+                    return datetime.fromisoformat(ts_val)
+                except ValueError:
+                    return datetime.now(timezone.utc)
+            return datetime.now(timezone.utc)
+
+        def _log_event(ev: Dict[str, object]) -> None:
+            evt = str(ev.get("event", "")).upper()
+            ts_val = _coerce_ts(ev.get("ts"))
+            label = {
+                "BUY": "BY",
+                "SCALP_BUY": "SC",
+                "MICRO_BUY": "MB",
+                "SELL": "SL",
+                "ENTER_TRAIL": "TRL",
+                "STAGE_UP": "STG",
+                "TIME_TIGHTEN": "TITE",
+            }.get(evt, evt or "EVT")
+
+            parts = [label]
+            price = ev.get("price")
+            qty = ev.get("qty") or ev.get("q")
+            amt_q = ev.get("amt_q")
+            pnl = ev.get("pnl") or ev.get("pnl_total")
+            note = ev.get("note") or ev.get("reason")
+            if isinstance(price, (int, float)):
+                parts.append(f"@{price:.4f}")
+            if isinstance(qty, (int, float)) and qty:
+                parts.append(f"q{float(qty):.4f}")
+            if isinstance(amt_q, (int, float)) and amt_q:
+                parts.append(f"Q{float(amt_q):.2f}")
+            if isinstance(pnl, (int, float)):
+                parts.append(f"pnl={float(pnl):.2f}")
+            if note:
+                parts.append(str(note))
+
+            control.add_log(" ".join(parts), symbol=pair_cfg.symbol, kind="event", ts=ts_val)
+
         startup_status = build_status_snapshot(latest["close"], latest["timestamp"])
         log_status(startup_status)
         last_status = serialise_status(startup_status)
         control.update_status(pair_symbol, last_status)
+        control.add_log(
+            f"START {pair_cfg.symbol} {pair_cfg.interval} dry={'Y' if args.dry_run else 'N'}",
+            symbol=pair_cfg.symbol,
+            kind="status",
+            ts=latest["timestamp"],
+        )
         write_savepoint(
             savepoint_dir,
             pair_cfg.symbol,
@@ -1181,6 +1282,12 @@ def main() -> None:
                     "realized_pnl_total": realized_pnl_total,
                 }
             )
+            control.add_log(
+                f"MANUAL EXIT q={executed_qty:.4f} @ {avg_price:.4f} pnl={realized_pnl:.2f}",
+                symbol=pair_cfg.symbol,
+                kind="event",
+                ts=ts,
+            )
 
             reset_round(state, avg_price, ts)
             event_log.clear()
@@ -1239,6 +1346,7 @@ def main() -> None:
                 persist_event_log_delta()
 
                 for ev in new_events:
+                    _log_event(ev)
                     evt = ev.get("event")
                     if evt in {"BUY", "SCALP_BUY", "MICRO_BUY"}:
                         _normalise_buy_event(ev)
