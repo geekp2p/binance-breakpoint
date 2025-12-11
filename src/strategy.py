@@ -649,6 +649,16 @@ class StrategyState:
     def _maybe_micro_buy(self, ts, h, l, log_events: List[Dict[str, Any]]):
         if not self.micro.enabled or self.bar_index < self.micro_cooldown_until_bar:
             return
+        if self.micro_positions:
+            log_events.append(
+                {
+                    "ts": ts,
+                    "event": "MICRO_BUY_SKIPPED",
+                    "reason": "OPEN_POSITION",
+                    "open_positions": len(self.micro_positions),
+                }
+            )
+            return        
         snap = self._micro_snapshot()
         if not snap or not snap["ready"]:
             return
