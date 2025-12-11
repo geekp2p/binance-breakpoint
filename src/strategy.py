@@ -707,7 +707,8 @@ class StrategyState:
         if prev_qty <= 0 < self.Q:
             self.round_start_ts = ts
         target = price * (1 + self.micro.take_profit_pct)
-        stop = price * (1 - self.micro.stop_break_pct)
+        break_even_price = cost / qty / max(1 - self.fees_sell, 1e-9)
+        stop = max(price * (1 - self.micro.stop_break_pct), break_even_price)
         self.micro_positions.append({
             "entry": price,
             "qty": qty,
@@ -758,20 +759,42 @@ class StrategyState:
                 exit_price = stop
                 reason = "STOP"
             if exit_price is not None:
-                proceeds = qty * exit_price * (1 - self.fees_sell)
-                pnl = proceeds - pos["cost"]
-                self.Q = max(self.Q - qty, 0.0)
-                self.C = max(self.C - pos["cost"], 0.0)
+                qty_to_sell = min(qty, self.Q)
+                if qty_to_sell <= 0:
+                    log_events.append(
+                        {
+                            "ts": ts,
+                            "event": "MICRO_EXIT_SKIPPED",
+                            "reason": "NO_QTY",
+                            "qty": qty,
+                        }
+                    )
+                    remaining_positions.append(pos)
+                    continue
+
+                cost_share = pos["cost"] * (qty_to_sell / qty)
+                proceeds = qty_to_sell * exit_price * (1 - self.fees_sell)
+                pnl = proceeds - cost_share
+                self.Q = max(self.Q - qty_to_sell, 0.0)
+                self.C = max(self.C - cost_share, 0.0)
+                if qty_to_sell < qty:
+                    remaining_positions.append(
+                        {
+                            **pos,
+                            "qty": qty - qty_to_sell,
+                            "cost": pos["cost"] - cost_share,
+                        }
+                    )
                 self.micro_last_exit_price = exit_price
                 self.micro_cooldown_until_bar = self.bar_index + max(1, int(self.micro.cooldown_bars))
                 log_events.append({
                     "ts": ts,
                     "event": f"MICRO_{reason}",
                     "price": exit_price,
-                    "qty": qty,
+                    "qty": qty_to_sell,
                     "proceeds": proceeds,
                     "pnl": pnl,
-                    "cost": pos["cost"],                    
+                    "cost": cost_share,
                 })
             else:
                 remaining_positions.append(pos)

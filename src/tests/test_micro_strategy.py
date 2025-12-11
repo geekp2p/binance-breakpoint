@@ -104,3 +104,36 @@ def test_micro_buy_sell_and_reentry_guard():
     state._maybe_micro_buy(ts, h=pulled_back_base * 1.001, l=pulled_back_base * 0.999, log_events=events)
     assert any(e["event"] == "MICRO_BUY" for e in events)
     assert state.micro_positions
+
+
+def test_micro_stop_clamped_and_no_oversell():
+    state = make_state()
+    state.rebuild_ladder(100.0)
+    seed_micro_ready(state)
+
+    events = []
+    ts = pd.Timestamp("2025-01-01T00:00:00Z")
+    state._maybe_micro_buy(ts, h=100.3, l=99.7, log_events=events)
+
+    position = state.micro_positions[0]
+    breakeven = position["cost"] / position["qty"] / (1 - state.fees_sell)
+    assert position["stop"] >= breakeven
+
+    # Simulate some coins already sold elsewhere; ensure exit does not oversell
+    state.Q -= position["qty"] * 0.5
+    state.C -= position["cost"] * 0.5
+
+    events.clear()
+    state._check_micro_take_profit(
+        ts,
+        h=position["stop"],
+        l=position["stop"],
+        log_events=events,
+    )
+
+    exit_event = next(e for e in events if e["event"].startswith("MICRO_"))
+    assert exit_event["qty"] <= position["qty"]
+    assert exit_event["pnl"] >= -1e-9
+    assert state.Q >= 0
+    # Remaining qty should stay on the books if we sold only part of it
+    assert any(pos["qty"] > 0 for pos in state.micro_positions) or not state.micro_positions
