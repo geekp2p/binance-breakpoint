@@ -343,6 +343,26 @@
       </div>
     </div>
 
+    <div class="card" style="margin-top: 16px;">
+      <h3>Adaptive Buy-the-Dip / Sell-the-Rip</h3>
+      <p class="muted">Concise, per-symbol guidance for dip entries, rip exits, fast swings, ladder ammo, and profit reserves.</p>
+      <div style="overflow-x: auto;">
+        <table>
+          <thead>
+            <tr>
+              <th>Symbol</th>
+              <th>Entry trigger</th>
+              <th>Exit plan</th>
+              <th>Quick swing note</th>
+              <th>Ammo / ladder</th>
+              <th>Profit stash</th>
+            </tr>
+          </thead>
+          <tbody id="planRows"></tbody>
+        </table>
+      </div>
+    </div>
+
     <div class="footer">
       <span class="pill">Data from /health</span>
       <span id="lastUpdated">-</span>
@@ -352,6 +372,7 @@
   <script>
     const apiBaseEl = document.getElementById("apiBase");
     const rowsEl = document.getElementById("rows");
+    const planRowsEl = document.getElementById("planRows");
     const errorEl = document.getElementById("error");
     const metaEl = document.getElementById("meta");
     const proxyToggle = document.getElementById("useProxy");
@@ -442,6 +463,57 @@
             .join(", ")}`
         : null;
       return other ? `${quote} q / ${bnb} bnb (${other})` : `${quote} q / ${bnb} bnb`;
+    }
+
+    function planRow(symbol, v) {
+      const hasBtdTarget = typeof v.btd_target_price === "number";
+      const entryTarget = hasBtdTarget ? v.btd_target_price : v.next_buy_price;
+      const entryLabel = hasBtdTarget ? "Dip trigger" : "Next buy";
+      const entryText = entryTarget
+        ? `${entryLabel} ≤ ${formatGap(entryTarget, v.price)}`
+        : "Waiting for buy target";
+
+      const exitText = v.next_sell_price
+        ? `Scale out ≥ ${formatGap(v.next_sell_price, v.price)}`
+        : "Waiting for sell target";
+
+      const swingStateRaw = v.micro_state || (v.micro_positions > 0 ? "waiting_sell" : "idle");
+      const swingState = swingStateRaw.replace(/_/g, " ");
+      const swingParts = [
+        `Micro ${swingState}`,
+        `Next b ${v.micro_next_buy_price ? fmtNumber(v.micro_next_buy_price) : "-"}`,
+        `Next s ${v.micro_next_sell_price ? fmtNumber(v.micro_next_sell_price) : "-"}`,
+        `Swings ${v.micro_swings ?? 0}`
+      ];
+      const swingText = swingParts.join(" · ");
+
+      const ladderFilled = Array.isArray(v.ladder_legs)
+        ? v.ladder_legs.filter((leg) => leg.filled).length
+        : typeof v.ladder_index === "number"
+          ? Math.min(v.ladder_index, v.ladder_total || 0)
+          : 0;
+      const ladderTotal = Array.isArray(v.ladder_legs)
+        ? v.ladder_legs.length
+        : v.ladder_total;
+      const ladderParts = [];
+      if (ladderTotal) ladderParts.push(`${ladderFilled}/${ladderTotal} ladder filled`);
+      if (v.ladder_next_quote) ladderParts.push(`Next quote ${fmtNumber(v.ladder_next_quote, 2)}`);
+      const ammoText = ladderParts.length ? ladderParts.join(" · ") : "Ladder idle";
+
+      const profitReserve = v.profit_reserve || v.profit_reserve_coin;
+      const profitText = profitReserve
+        ? `Holding ${reserveLabel(profitReserve, { compact: true })}`
+        : "No profit reserve yet";
+
+      return `
+        <tr>
+          <td><strong>${symbol}</strong></td>
+          <td>${entryText}</td>
+          <td>${exitText}</td>
+          <td>${swingText}</td>
+          <td>${ammoText}</td>
+          <td>${profitText}</td>
+        </tr>`;
     }
 
     function apiUrl(path) {
@@ -609,6 +681,8 @@
             </tr>`;
         })
         .join("");
+
+      planRowsEl.innerHTML = entries.map(([symbol, v]) => planRow(symbol, v)).join("");
 
       const totalsRow = document.getElementById("totalsRow");
       totalsRow.innerHTML = `
