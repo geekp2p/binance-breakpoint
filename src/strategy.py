@@ -420,7 +420,15 @@ class StrategyState:
         spent_scalp = self._scalp_committed_quote()
         remaining_quote = max(effective_alloc - spent_ladder - spent_scalp, 0.0)
         remaining_scalp_cap = max(target_alloc - spent_scalp, 0.0)
-        return min(remaining_scalp_cap, remaining_quote)
+        ladder_cap = 0.0
+        if 0 <= self.ladder_next_idx < len(self.ladder_amounts_quote):
+            ladder_cap = max(self.ladder_amounts_quote[self.ladder_next_idx], 0.0)
+
+        cap = remaining_scalp_cap
+        if ladder_cap > 0:
+            cap = min(cap, ladder_cap)
+
+        return min(cap, remaining_quote)
 
     def _remaining_micro_allocation(self) -> float:
         effective_alloc = min(self.b_alloc, self.buy.max_total_quote) if self.buy.max_total_quote > 0 else self.b_alloc
