@@ -238,8 +238,11 @@ class StrategyState:
     def rebuild_ladder(self, base_price: float, ts=None, log_events: Optional[List[Dict[str, Any]]] = None,
                        reason: str = "RESET", preserve_progress: bool = False):
         steps = self._effective_n_steps()
+        alloc = self.b_alloc
+        if preserve_progress:
+            alloc = self._remaining_quote_allocation()
         amounts = compute_ladder_amounts(
-            self.b_alloc,
+            alloc,
             self.buy.m_buy,
             steps,
             size_mode=self.buy.size_mode,
