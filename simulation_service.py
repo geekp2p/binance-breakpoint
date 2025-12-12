@@ -314,6 +314,31 @@ def export_csv() -> Response:
     )
 
 
+@app.route("/start", methods=["POST", "OPTIONS"])
+def start() -> Response:  # pylint: disable=redefined-builtin
+    """Alias for `/simulate` to keep compatibility with existing callers."""
+    if request.method == "OPTIONS":
+        return Response(status=204)
+
+    payload = request.get_json(silent=True) or {}
+    symbol = payload.get("symbol")
+    lookback = float(payload.get("lookback_days") or 3.0)
+    speed = float(payload.get("speed") or 24.0)
+    try:
+        start_simulator(symbol, lookback_days=lookback, speed=speed)
+    except Exception as exc:  # pylint: disable=broad-except
+        logging.exception("Failed to start simulator")
+        return jsonify({"status": "error", "message": str(exc)}), 400
+
+    snapshot = SIMULATOR.snapshot() if SIMULATOR else {"status": "unknown"}
+    snapshot["meta"] = {
+        "symbol": (symbol or DEFAULT_SYMBOL or "").upper(),
+        "lookback_days": lookback,
+        "speed": speed,
+    }
+    return jsonify(snapshot)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run accelerated simulation service")
     parser.add_argument("--config", default="config.yaml", help="Config file to reuse for pair settings")
