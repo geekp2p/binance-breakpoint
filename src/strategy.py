@@ -716,8 +716,11 @@ class StrategyState:
         tp_pct = self.micro.take_profit_pct
         if self.micro.loss_recovery_enabled:
             tp_pct = min(tp_pct + self.micro_loss_recovery_pct, self.micro.loss_recovery_max_pct)
-        target = price * (1 + tp_pct)
         break_even_price = cost / qty / max(1 - self.fees_sell, 1e-9)
+        target = price * (1 + tp_pct)
+        min_profit_price = break_even_price * (1 + max(self.micro.min_profit_pct, 0.0))
+        if target < min_profit_price:
+            target = min_profit_price
         stop = max(price * (1 - self.micro.stop_break_pct), break_even_price)
         self.micro_positions.append({
             "entry": price,

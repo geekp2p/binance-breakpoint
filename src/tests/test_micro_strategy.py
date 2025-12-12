@@ -195,10 +195,26 @@ def test_micro_loss_recovery_boosts_next_take_profit():
     events.clear()
     state._maybe_micro_buy(ts, h=base * 1.001, l=base * 0.999, log_events=events)
     buy_event = next(e for e in events if e["event"] == "MICRO_BUY")
-    assert buy_event["target"] == buy_event["price"] * (1 + state.micro.take_profit_pct + state.micro_loss_recovery_pct)
+    assert buy_event["target"] >= buy_event["price"] * (1 + state.micro.take_profit_pct + state.micro_loss_recovery_pct)
 
     # A profitable exit should reset the recovery boost
     position = state.micro_positions[0]
     events.clear()
     state._check_micro_take_profit(ts, h=position["target"], l=position["target"], log_events=events)
     assert state.micro_loss_recovery_pct == 0.0
+
+
+def test_micro_take_profit_respects_fees_and_margin():
+    state = make_state()
+    state.micro.take_profit_pct = 0.0005  # intentionally tiny
+    state.micro.min_profit_pct = 0.0015
+    state.rebuild_ladder(100.0)
+    seed_micro_ready(state)
+
+    events = []
+    ts = pd.Timestamp("2025-01-01T00:00:00Z")
+    state._maybe_micro_buy(ts, h=100.2, l=99.7, log_events=events)
+
+    position = state.micro_positions[0]
+    break_even = position["cost"] / position["qty"] / (1 - state.fees_sell)
+    assert position["target"] >= break_even * (1 + state.micro.min_profit_pct)
