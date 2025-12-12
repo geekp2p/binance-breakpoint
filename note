@@ -3,7 +3,7 @@ docker compose up --build --force-recreate
 
 python -m compileall src tests
 
-docker compose build backtest demo live
+docker compose build backtest demo live simulation --no-cache
 
 docker compose up live
 
