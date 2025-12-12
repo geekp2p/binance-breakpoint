@@ -686,11 +686,43 @@ def main() -> None:
                 record_history(ev)
                 return
 
+            price_for_validation = target_price or last_close_price
+            if client and price_for_validation > 0:
+                min_notional = client.get_min_notional(pair_cfg.symbol)
+                est_notional = sell_qty * price_for_validation
+                if min_notional is not None and est_notional < min_notional:
+                    logging.warning(
+                        "Skipping micro exit for %s: qty %.8f @ %.8f below min notional %.8f",
+                        pair_cfg.symbol,
+                        sell_qty,
+                        price_for_validation,
+                        min_notional,
+                    )
+                    ev["skip_reason"] = "BELOW_MIN_NOTIONAL"
+                    ev["estimated_notional"] = est_notional
+                    ev["min_notional"] = min_notional
+                    record_history(ev)
+                    return
+
             executed_qty = sell_qty
             fill_price = target_price
             fills: list[dict] = []
             if client:
-                response = client.market_sell(pair_cfg.symbol, sell_qty)
+                try:
+                    response = client.market_sell(pair_cfg.symbol, sell_qty)
+                except ValueError as exc:
+                    logging.error("Micro exit aborted: %s", exc)
+                    ev["error"] = str(exc)
+                    ev["skip_reason"] = "LOT_SIZE"
+                    record_history(ev)
+                    return
+                except requests.HTTPError as exc:  # type: ignore[attr-defined]
+                    logging.error("Micro exit HTTP error: %s", exc)
+                    ev["error"] = str(exc)
+                    ev["skip_reason"] = "HTTP_ERROR"
+                    record_history(ev)
+                    return
+
                 logging.info("Micro sell response: %s", json.dumps(response))
                 fills = response.get("fills") or []
                 profit_allocator.record_fees_from_fills(pair_symbol, fills, pair_cfg.quote)

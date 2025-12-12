@@ -82,6 +82,21 @@ class BinanceClient:
                 return float(self._format_number(adjusted, precision))
         return quantity
 
+    def get_min_notional(self, symbol: str) -> Optional[float]:
+        """Return the minimum notional requirement for the symbol, if present."""
+
+        info = self.get_symbol_info(symbol)
+        filters = info.get("filters", [])
+        min_notional = None
+        for f in filters:
+            if f.get("filterType") in {"MIN_NOTIONAL", "NOTIONAL"}:
+                try:
+                    min_notional = float(f.get("minNotional") or f.get("notional"))
+                except (TypeError, ValueError):
+                    min_notional = None
+                break
+        return min_notional
+
     def get_free_balance(self, asset: str) -> float:
         """Return the available ("free") balance for the given asset."""
 
