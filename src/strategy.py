@@ -762,7 +762,7 @@ class StrategyState:
             if h >= target:
                 exit_price = target
                 reason = "TP"
-            elif l <= stop:
+            elif l <= stop <= h:
                 exit_price = stop
                 reason = "STOP"
             if exit_price is not None:

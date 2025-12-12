@@ -139,6 +139,31 @@ def test_micro_stop_clamped_and_no_oversell():
     assert any(pos["qty"] > 0 for pos in state.micro_positions) or not state.micro_positions
 
 
+def test_micro_stop_not_triggered_if_above_range():
+    state = make_state()
+    state.rebuild_ladder(100.0)
+    seed_micro_ready(state)
+
+    events = []
+    ts = pd.Timestamp("2025-01-01T00:00:00Z")
+    state._maybe_micro_buy(ts, h=100.3, l=99.7, log_events=events)
+
+    position = state.micro_positions[0]
+    assert position["stop"] > position["entry"]
+
+    events.clear()
+    # Stop above the bar range should not trigger an exit
+    state._check_micro_take_profit(
+        ts,
+        h=position["entry"],
+        l=position["entry"],
+        log_events=events,
+    )
+
+    assert state.micro_positions, "position should remain open when stop is not in range"
+    assert not any(e["event"].startswith("MICRO_") for e in events)
+
+
 def test_micro_loss_recovery_boosts_next_take_profit():
     state = make_state()
     state.micro.loss_recovery_markup_pct = 0.002
