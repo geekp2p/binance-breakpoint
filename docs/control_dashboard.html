@@ -281,13 +281,40 @@
           id="apiBase"
           class="input"
           type="text"
-          value=""
+          value="http://localhost:8082"
           aria-label="API base URL"
+        />
+        <input
+          id="pairSymbol"
+          class="input"
+          type="text"
+          value=""
+          placeholder="Symbol e.g. ZECUSDT"
+          aria-label="Pair symbol (optional)"
+        />
+        <input
+          id="lookbackDays"
+          class="input"
+          type="number"
+          value="3"
+          min="0.1"
+          step="0.1"
+          aria-label="Lookback days"
+        />
+        <input
+          id="speedMultiplier"
+          class="input"
+          type="number"
+          value="24"
+          min="1"
+          step="1"
+          aria-label="Time acceleration multiplier"
         />
         <label style="display:flex;align-items:center;gap:6px;color:var(--muted);font-weight:600;">
           <input id="useProxy" type="checkbox" />
           Use CORS proxy
         </label>
+        <button id="startSim">Simulate</button>
         <button id="refresh">Refresh</button>
         <button id="pauseAll" class="btn-danger">Pause all</button>
         <button id="resumeAll" class="btn-secondary">Resume all</button>
@@ -417,15 +444,19 @@
     const errorEl = document.getElementById("error");
     const metaEl = document.getElementById("meta");
     const proxyToggle = document.getElementById("useProxy");
+    const pairSymbolEl = document.getElementById("pairSymbol");
+    const lookbackEl = document.getElementById("lookbackDays");
+    const speedEl = document.getElementById("speedMultiplier");
+    const startBtn = document.getElementById("startSim");
     const proxyPrefKey = "bb_use_proxy";
 
     const defaultApiBase = (() => {
       const { protocol, hostname } = window.location;
       if (protocol.startsWith("http") && hostname) {
         const baseHost = hostname === "localhost" ? "localhost" : hostname;
-        return `${protocol}//${baseHost}:8080`;
+        return `${protocol}//${baseHost}:8082`;
       }
-      return "http://45.154.25.16:8080";
+      return "http://45.154.25.16:8082";
     })();
 
     if (!apiBaseEl.value || apiBaseEl.value.includes("45.154.25.16")) {
@@ -805,6 +836,32 @@
         alert(`Command failed: ${err.message}`);
       } finally {
         btn.disabled = false;
+      }
+    });
+
+    startBtn?.addEventListener("click", async () => {
+      const lookback = Number(lookbackEl?.value) || 3;
+      const speed = Number(speedEl?.value) || 24;
+      const symbol = pairSymbolEl?.value?.trim();
+      const payload = { lookback_days: lookback, speed };
+      if (symbol) payload.symbol = symbol;
+
+      startBtn.disabled = true;
+      const prevText = startBtn.textContent;
+      startBtn.textContent = "Starting...";
+      try {
+        const resp = await fetch(apiUrl("/start"), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        await fetchHealth();
+      } catch (err) {
+        alert(`Start failed: ${err.message}`);
+      } finally {
+        startBtn.disabled = false;
+        startBtn.textContent = prevText;
       }
     });
 

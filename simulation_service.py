@@ -7,7 +7,7 @@ from datetime import datetime
 from typing import Dict, List, Optional
 
 import pandas as pd
-from flask import Flask, Response, jsonify
+from flask import Flask, Response, jsonify, request
 
 from live_trader import build_pair_config
 from main import load_config
@@ -255,21 +255,14 @@ def main() -> None:
     pairs_raw = cfg.get("pairs", [])
     if not pairs_raw:
         raise SystemExit("No pairs configured")
-    symbol = args.symbol.upper() if args.symbol else pairs_raw[0]["symbol"].upper()
-    pair_raw = next((p for p in pairs_raw if p["symbol"].upper() == symbol), pairs_raw[0])
-    pair_cfg = build_pair_config(pair_raw, cfg.get("general", {}))
-    pair_cfg.lookback_days = args.lookback_days
-    pair_cfg.interval = pair_raw.get("interval", "1m")
 
-    global SIMULATOR
-    SIMULATOR = SimulationRunner(
-        pair_cfg,
-        cfg.get("general", {}),
-        cfg.get("api", {}),
-        speed_multiplier=args.speed,
-        lookback_days=args.lookback_days,
-    )
-    SIMULATOR.start()
+    global GENERAL_CFG, API_CFG, PAIRS_RAW, DEFAULT_SYMBOL
+    GENERAL_CFG = cfg.get("general", {})
+    API_CFG = cfg.get("api", {})
+    PAIRS_RAW = pairs_raw
+    DEFAULT_SYMBOL = args.symbol.upper() if args.symbol else pairs_raw[0]["symbol"].upper()
+
+    start_simulator(symbol=DEFAULT_SYMBOL, lookback_days=args.lookback_days, speed=args.speed)
 
     app.run(host="0.0.0.0", port=args.http_port)
 

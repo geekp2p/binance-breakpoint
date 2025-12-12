@@ -56,4 +56,22 @@ services:
       - ./config.yaml:/app/config.yaml:ro
       - ./savepoint:/app/savepoint      
     command: ["python","live_trader.py","--config","config.yaml"]
+
+    restart: unless-stopped
+
+  simulation:
+    image: binance-breakpoint:latest
+    container_name: binance-breakpoint-simulation
+    env_file:
+      - .env
+    environment:
+      - TZ=Asia/Bangkok
+    ports:
+      - "8082:8080"
+    volumes:
+      - ./config.yaml:/app/config.yaml:ro
+      - ./out:/app/out
+      - ./data:/app/data
+    command: ["python","simulation_service.py","--config","config.yaml","--lookback-days","3","--speed","24","--http-port","8080"]
+
     restart: unless-stopped
