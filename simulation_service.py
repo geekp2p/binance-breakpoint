@@ -55,8 +55,10 @@ class SimulationRunner:
         if self.lookback_days:
             df = df.tail(int(self.lookback_days * 24 * 60))
         result = run_backtest_for_pair(df, self.pair_cfg)
-        self._trades = result.get("trades") or pd.DataFrame()
-        self._equity = result.get("equity") or pd.DataFrame()
+        trades = result.get("trades")
+        equity = result.get("equity")
+        self._trades = trades if trades is not None else pd.DataFrame()
+        self._equity = equity if equity is not None else pd.DataFrame()
         self._trade_ptr = 0
         self._realized = 0.0
         self._logs.clear()
