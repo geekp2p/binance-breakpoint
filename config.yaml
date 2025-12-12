@@ -75,6 +75,8 @@ pairs:
         entry_band_pct: 0.15
         take_profit_pct: 0.0025
         stop_break_pct: 0.005
+        # Minimum margin above break-even (after fees) for micro exits
+        min_profit_pct: 0.002
         order_pct_allocation: 0.15
         cooldown_bars: 5
       buy_the_dip:
@@ -196,6 +198,8 @@ pairs:
         entry_band_pct: 0.15
         take_profit_pct: 0.0025
         stop_break_pct: 0.005
+        # Minimum margin above break-even (after fees) for micro exits
+        min_profit_pct: 0.002
         order_pct_allocation: 0.15
         cooldown_bars: 5
       buy_the_dip:
@@ -317,6 +321,8 @@ pairs:
         entry_band_pct: 0.15
         take_profit_pct: 0.0025
         stop_break_pct: 0.005
+        # Minimum margin above break-even (after fees) for micro exits
+        min_profit_pct: 0.002
         order_pct_allocation: 0.15
         cooldown_bars: 5
       buy_the_dip:
@@ -438,6 +444,8 @@ pairs:
         entry_band_pct: 0.15
         take_profit_pct: 0.0025
         stop_break_pct: 0.005
+        # Minimum margin above break-even (after fees) for micro exits
+        min_profit_pct: 0.002
         order_pct_allocation: 0.15
         cooldown_bars: 5
       buy_the_dip:
@@ -559,6 +567,8 @@ pairs:
         entry_band_pct: 0.15
         take_profit_pct: 0.0025
         stop_break_pct: 0.005
+        # Minimum margin above break-even (after fees) for micro exits
+        min_profit_pct: 0.002
         order_pct_allocation: 0.15
         cooldown_bars: 5
       buy_the_dip:
@@ -681,6 +691,8 @@ pairs:
         entry_band_pct: 0.15
         take_profit_pct: 0.0025
         stop_break_pct: 0.005
+        # Minimum margin above break-even (after fees) for micro exits
+        min_profit_pct: 0.002
         order_pct_allocation: 0.15
         cooldown_bars: 5
       buy_the_dip:
