@@ -19,6 +19,11 @@
     th { background: #f0f4f8; }
     .downloads a { margin-right: 0.8rem; }
     .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid #0b8bd9; border-radius: 50%; border-top-color: transparent; animation: spin 0.9s linear infinite; margin-left: 6px; }
+    .card { background: #fff; padding: 1rem; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,0.12); margin-top: 1rem; }
+    .pill { display: inline-flex; align-items: center; padding: 0.25rem 0.55rem; border-radius: 999px; background: #edf3f8; color: #0b5db3; font-weight: 600; margin-right: 0.4rem; }
+    .muted { color: #555; }
+    .status-list { list-style: disc; margin-left: 1.2rem; color: #444; }
+    .status-list code { background: #eef2f5; padding: 0.15rem 0.25rem; border-radius: 4px; }
     @keyframes spin { to { transform: rotate(360deg); } }
   </style>
 </head>
@@ -46,6 +51,34 @@
     <button type="submit" id="run-btn">Run Backtest</button>
     <div class="status" id="status">Idle</div>
   </form>
+
+  <div class="card" aria-label="Simulation controls">
+    <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.5rem;">
+      <div>
+        <h2 style="margin: 0 0 0.25rem 0;">Accelerated Simulation</h2>
+        <p class="muted" style="margin: 0;">Replay the configured pair history faster than real-time without touching the CLI.</p>
+      </div>
+      <div class="pill" id="simulate-pill">Idle</div>
+    </div>
+
+    <form id="simulate-form" style="margin-top: 0.75rem;">
+      <label for="simulate-symbol">Symbol</label>
+      <input id="simulate-symbol" name="symbol" type="text" placeholder="Leave blank to reuse config order" />
+
+      <label for="simulate-lookback">Lookback days</label>
+      <input id="simulate-lookback" name="lookback" type="number" min="1" step="0.5" value="3" />
+
+      <label for="simulate-speed">Time acceleration (×)</label>
+      <input id="simulate-speed" name="speed" type="number" min="1" step="1" value="24" />
+
+      <button type="submit" id="simulate-btn">Simulate</button>
+      <div class="status" id="simulate-status">No run yet</div>
+    </form>
+
+    <div style="margin-top: 0.5rem;" id="simulate-meta" class="muted"></div>
+    <div style="margin-top: 0.5rem;" id="simulate-totals"></div>
+    <ul id="simulate-logs" class="status-list"></ul>
+  </div>
 
   <div class="grid" style="margin-top: 1.5rem;">
     <div>
@@ -122,6 +155,13 @@
     const levelsTableBody = document.querySelector('#levels-table tbody');
     const planTableBody = document.querySelector('#plan-table tbody');
     const downloads = document.getElementById('downloads');
+    const simulateForm = document.getElementById('simulate-form');
+    const simulateStatus = document.getElementById('simulate-status');
+    const simulateBtn = document.getElementById('simulate-btn');
+    const simulateMeta = document.getElementById('simulate-meta');
+    const simulateTotals = document.getElementById('simulate-totals');
+    const simulateLogs = document.getElementById('simulate-logs');
+    const simulatePill = document.getElementById('simulate-pill');
 
     function setStatus(text, spinning=false) {
       status.textContent = text;
@@ -142,10 +182,52 @@
       return a;
     }
 
+    function setSimStatus(text, pillColor = '#edf3f8', pillText = 'Idle') {
+      simulateStatus.textContent = text;
+      simulatePill.textContent = pillText;
+      simulatePill.style.background = pillColor;
+      simulatePill.style.color = pillColor === '#edf3f8' ? '#0b5db3' : '#fff';
+    }
+
+    function renderSimSnapshot(data) {
+      const meta = data.meta || {};
+      const pairEntry = data.pairs ? Object.values(data.pairs)[0] : null;
+      const statusText = data.status || 'unknown';
+      const pillColor = statusText === 'running' ? '#0b8bd9' : statusText === 'paused' ? '#f5a524' : '#edf3f8';
+      setSimStatus(`Status: ${statusText}`, pillColor, statusText.toUpperCase());
+      simulateMeta.textContent = `Symbol: ${meta.symbol || (pairEntry && pairEntry.symbol) || '-'} | Lookback: ${meta.lookback_days || '-'}d | Speed: ×${meta.speed || '-'}`;
+
+      if (data.totals) {
+        const { realized_pnl, unrealized_pnl, pnl_total } = data.totals;
+        simulateTotals.innerHTML = `
+          <strong>Totals</strong>: Realized ${realized_pnl?.toFixed?.(2) ?? '-'} | Unrealized ${unrealized_pnl?.toFixed?.(2) ?? '-'} | PnL ${pnl_total?.toFixed?.(2) ?? '-'}`;
+      } else {
+        simulateTotals.textContent = '';
+      }
+
+      simulateLogs.innerHTML = '';
+      (data.logs || []).slice(-5).reverse().forEach(log => {
+        const li = document.createElement('li');
+        li.innerHTML = `<code>${new Date(log.ts).toLocaleString()}</code> — ${log.msg}`;
+        simulateLogs.appendChild(li);
+      });
+
+      if (!data.logs || !data.logs.length) {
+        const li = document.createElement('li');
+        li.className = 'muted';
+        li.textContent = 'No events yet. Start a simulation to stream logs.';
+        simulateLogs.appendChild(li);
+      }
+    }
+
     const apiBase = (window.BACKTEST_API_BASE || '').trim() ||
       (window.location.origin && window.location.origin !== 'null'
         ? window.location.origin
         : 'http://localhost:8181');
+
+    const simApiBase = (window.SIM_API_BASE || '').trim()
+      || (window.location.hostname ? `${window.location.protocol}//${window.location.hostname}:8082` : '')
+      || 'http://localhost:8082';
 
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -229,6 +311,46 @@
         runBtn.disabled = false;
       }
     });
+
+    async function refreshSimStatus(showErrors=false) {
+      try {
+        const resp = await fetch(`${simApiBase.replace(/\/$/, '')}/health`);
+        if (!resp.ok) throw new Error(await resp.text());
+        const data = await resp.json();
+        renderSimSnapshot(data);
+      } catch (err) {
+        if (showErrors) {
+          setSimStatus(`Simulation offline: ${err.message || err}`, '#f5a524', 'OFFLINE');
+        }
+      }
+    }
+
+    simulateForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const symbol = document.getElementById('simulate-symbol').value.trim();
+      const lookback = Number(document.getElementById('simulate-lookback').value || 3);
+      const speed = Number(document.getElementById('simulate-speed').value || 24);
+      setSimStatus('Starting simulation…', '#0b8bd9', 'STARTING');
+      simulateBtn.disabled = true;
+      try {
+        const resp = await fetch(`${simApiBase.replace(/\/$/, '')}/simulate`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ symbol: symbol || undefined, lookback_days: lookback, speed })
+        });
+        if (!resp.ok) throw new Error(await resp.text());
+        const data = await resp.json();
+        renderSimSnapshot(data);
+      } catch (err) {
+        setSimStatus(`Failed to start: ${err.message || err}`, '#d7263d', 'ERROR');
+      } finally {
+        simulateBtn.disabled = false;
+      }
+    });
+
+    setSimStatus('Ready to simulate', '#edf3f8', 'IDLE');
+    refreshSimStatus();
+    setInterval(() => refreshSimStatus(false), 7000);
   </script>
 </body>
 </html>

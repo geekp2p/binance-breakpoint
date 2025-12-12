@@ -16,6 +16,13 @@ from src.backtester import PairConfig, load_data_for_pair, run_backtest_for_pair
 app = Flask(__name__)
 logging.basicConfig(level=logging.INFO, format="[%(asctime)s] %(levelname)s: %(message)s")
 
+# Lazily populated when `main()` loads the config. Kept as module-level state so that
+# the simulator can be restarted from HTTP endpoints without re-reading the config.
+GENERAL_CFG: Dict = {}
+API_CFG: Dict = {}
+PAIRS_RAW: List[Dict] = []
+DEFAULT_SYMBOL: Optional[str] = None
+
 
 class SimulationRunner:
     def __init__(
@@ -202,6 +209,63 @@ class SimulationRunner:
 SIMULATOR: Optional[SimulationRunner] = None
 
 
+def start_simulator(symbol: Optional[str], lookback_days: float, speed: float) -> None:
+    """Start or restart the simulator for the requested symbol."""
+
+    if not PAIRS_RAW:
+        raise RuntimeError("Config not loaded; restart the service with --config")
+
+    target = (symbol or DEFAULT_SYMBOL or PAIRS_RAW[0]["symbol"]).upper()
+    pair_raw = next((p for p in PAIRS_RAW if p.get("symbol", "").upper() == target), None)
+    if pair_raw is None:
+        raise ValueError(f"Unknown symbol: {target}")
+
+    pair_cfg = build_pair_config(pair_raw, GENERAL_CFG)
+    runner = SimulationRunner(
+        pair_cfg,
+        general_cfg=GENERAL_CFG,
+        api_cfg=API_CFG,
+        speed_multiplier=speed,
+        lookback_days=lookback_days,
+    )
+    runner.start()
+
+    global SIMULATOR
+    SIMULATOR = runner
+
+
+@app.after_request
+def add_cors_headers(response: Response) -> Response:
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type"
+    response.headers["Access-Control-Allow-Methods"] = "GET,POST,OPTIONS"
+    return response
+
+
+@app.route("/simulate", methods=["POST", "OPTIONS"])
+def simulate() -> Response:
+    if request.method == "OPTIONS":
+        return Response(status=204)
+
+    payload = request.get_json(silent=True) or {}
+    symbol = payload.get("symbol")
+    lookback = float(payload.get("lookback_days") or 3.0)
+    speed = float(payload.get("speed") or 24.0)
+    try:
+        start_simulator(symbol, lookback_days=lookback, speed=speed)
+    except Exception as exc:  # pylint: disable=broad-except
+        logging.exception("Failed to start simulator")
+        return jsonify({"status": "error", "message": str(exc)}), 400
+
+    snapshot = SIMULATOR.snapshot() if SIMULATOR else {"status": "unknown"}
+    snapshot["meta"] = {
+        "symbol": (symbol or DEFAULT_SYMBOL or "").upper(),
+        "lookback_days": lookback,
+        "speed": speed,
+    }
+    return jsonify(snapshot)
+
+
 @app.route("/health")
 def health() -> Response:
     if SIMULATOR is None:
@@ -209,22 +273,28 @@ def health() -> Response:
     return jsonify(SIMULATOR.snapshot())
 
 
-@app.route("/pause", methods=["POST"])
+@app.route("/pause", methods=["POST", "OPTIONS"])
 def pause() -> Response:
+    if request.method == "OPTIONS":
+        return Response(status=204)
     if SIMULATOR:
         SIMULATOR.pause()
     return jsonify({"status": "paused"})
 
 
-@app.route("/resume", methods=["POST"])
+@app.route("/resume", methods=["POST", "OPTIONS"])
 def resume() -> Response:
+    if request.method == "OPTIONS":
+        return Response(status=204)
     if SIMULATOR:
         SIMULATOR.resume()
     return jsonify({"status": "running"})
 
 
-@app.route("/stop", methods=["POST"])
+@app.route("/stop", methods=["POST", "OPTIONS"])
 def stop() -> Response:
+    if request.method == "OPTIONS":
+        return Response(status=204)
     if SIMULATOR:
         SIMULATOR.stop()
     return jsonify({"status": "stopped"})

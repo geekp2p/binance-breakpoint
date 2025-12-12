@@ -21,10 +21,9 @@ docker compose up demo
   ```bash
   docker compose up simulation
   ```
-- เปิดไฟล์ `docs/control_dashboard.html` ในเบราว์เซอร์ แล้วตั้ง `API base` เป็น `http://localhost:8082`
-- ปรับ `Lookback days` (ดีฟอลต์ 3) และ `Time acceleration multiplier` (ดีฟอลต์ 24 = 3 วันย่อเหลือ ~3 ชั่วโมง)
-- กด **Simulate** เพื่อเริ่ม/รีสตาร์ทรอบจำลอง, ใช้ปุ่ม **Pause/Resume/Stop** ควบคุมการเล่น, และ **Export CSV** เพื่อดาวน์โหลดเทรดพร้อมสรุป PnL
-- หน้า Dashboard จะกวาดข้อมูลจาก `/health` ทุก 10 วินาที และแสดงการซื้อขาย/สถานะในรูปแบบไล
+- เปิดหน้า `http://localhost:8181/` (UI เดียวกับ backtest) แล้วกรอก `Symbol` (เว้นว่างเพื่อใช้คู่แรกใน config), `Lookback days`, `Time acceleration (×)` แล้วกด **Simulate**
+- UI จะคุยกับ API `http://localhost:8082` อัตโนมัติ พร้อมดึง `/health` ทุก ~7 วินาที เพื่ออัปเดตสถานะ/PNL และ log ล่าสุด 5 รายการ
+- อยากเริ่มรอบใหม่ก็กด **Simulate** ซ้ำได้เลย ไม่ต้องเข้า CLI
 
 ## New: lightweight HTTP backtest service (port 8181)
 Run an isolated backtest API + minimal UI (separateจาก live HTML):
