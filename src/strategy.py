@@ -422,6 +422,20 @@ class StrategyState:
         for pos in self.micro_positions:
             total += pos.get("cost", 0.0) / (1 + self.fees_buy)
         return total
+    
+    def _micro_totals(self) -> Dict[str, float]:
+        qty = 0.0
+        cost = 0.0
+        for pos in self.micro_positions:
+            qty += pos.get("qty", 0.0)
+            cost += pos.get("cost", 0.0)
+        return {"qty": qty, "cost": cost}
+
+    def _core_position(self) -> Dict[str, float]:
+        micro = self._micro_totals()
+        core_qty = max(self.Q - micro["qty"], 0.0)
+        core_cost = max(self.C - micro["cost"], 0.0)
+        return {"qty": core_qty, "cost": core_cost}    
 
     def _remaining_scalp_allocation(self) -> float:
         effective_alloc = min(self.b_alloc, self.buy.max_total_quote) if self.buy.max_total_quote > 0 else self.b_alloc
@@ -508,9 +522,10 @@ class StrategyState:
         return max(F1, base_floor)
 
     def P_BE(self):
-        if self.Q <= 0:
+        core = self._core_position()
+        if core["qty"] <= 0:
             return None
-        return self.C / (self.Q * (1 - self.fees_sell))
+        return core["cost"] / (core["qty"] * (1 - self.fees_sell))
 
     # --- Scalp helpers ---
     def _update_session_range(self, h: float, l: float):
@@ -808,12 +823,14 @@ class StrategyState:
                 self.micro_cooldown_until_bar = self.bar_index + max(1, int(self.micro.cooldown_bars))
                 if self.micro.loss_recovery_enabled:
                     if pnl <= 0:
+                        loss_ratio = abs(pnl) / max(cost_share, 1e-9)
+                        recovery = loss_ratio + self.micro.loss_recovery_markup_pct
                         self.micro_loss_recovery_pct = min(
-                            self.micro_loss_recovery_pct + self.micro.loss_recovery_markup_pct,
+                            max(self.micro_loss_recovery_pct, recovery),
                             self.micro.loss_recovery_max_pct,
                         )
                     else:
-                        self.micro_loss_recovery_pct = 0.0                
+                        self.micro_loss_recovery_pct = 0.0         
                 log_events.append({
                     "ts": ts,
                     "event": f"MICRO_{reason}",
@@ -1042,15 +1059,18 @@ class StrategyState:
                 log_events.append({"ts": ts, "event":"TIME_TIGHTEN", "p_lock_cur": self.p_lock_cur, "tau_cur": self.tau_cur})
             F = self.floor_price(P_BE)
             if F is not None and l <= F <= h:
-                qty = self.Q
-                proceeds = qty * F * (1 - self.fees_sell)
-                pnl = proceeds - self.C
-                log_events.append({"ts": ts, "event":"SELL", "price": F, "proceeds": proceeds, "pnl": pnl, "qty": qty})
-                self.round_active = False
-                self.Q = 0.0
-                self.C = 0.0
-                self._reset_btd_progress()
-                return {"sell_price": F, "pnl": pnl, "reason":"TRAIL_PULLBACK", "qty": qty}
+                core = self._core_position()
+                qty = core["qty"]
+                if qty > 0:
+                    proceeds = qty * F * (1 - self.fees_sell)
+                    pnl = proceeds - core["cost"]
+                    log_events.append({"ts": ts, "event":"SELL", "price": F, "proceeds": proceeds, "pnl": pnl, "qty": qty})
+                    self.Q = max(self.Q - qty, 0.0)
+                    self.C = max(self.C - core["cost"], 0.0)
+                    if self.Q <= 0:
+                        self.round_active = False
+                    self._reset_btd_progress()
+                    return {"sell_price": F, "pnl": pnl, "reason":"TRAIL_PULLBACK", "qty": qty}
 
         # --- idle/total caps ---
         if self.phase == PHASE_ACCUMULATE and not self.idle_checked:
@@ -1058,28 +1078,34 @@ class StrategyState:
             if minutes_since_round >= self.tcaps.T_idle_max_minutes:
                 target = P_BE * (1 + max(self.tcaps.p_idle, self.trail.no_loss_epsilon))
                 if h >= target:
-                    qty = self.Q
-                    proceeds = qty * target * (1 - self.fees_sell)
-                    pnl = proceeds - self.C
-                    log_events.append({"ts": ts, "event":"SELL", "price": target, "proceeds": proceeds, "pnl": pnl, "note":"IDLE_EXIT", "qty": qty})
-                    self.round_active = False
-                    self.Q = 0.0
-                    self.C = 0.0
-                    self._reset_btd_progress()
-                    return {"sell_price": target, "pnl": pnl, "reason":"IDLE_EXIT", "qty": qty}
+                    core = self._core_position()
+                    qty = core["qty"]
+                    if qty > 0:
+                        proceeds = qty * target * (1 - self.fees_sell)
+                        pnl = proceeds - core["cost"]
+                        log_events.append({"ts": ts, "event":"SELL", "price": target, "proceeds": proceeds, "pnl": pnl, "note":"IDLE_EXIT", "qty": qty})
+                        self.Q = max(self.Q - qty, 0.0)
+                        self.C = max(self.C - core["cost"], 0.0)
+                        if self.Q <= 0:
+                            self.round_active = False
+                        self._reset_btd_progress()
+                        return {"sell_price": target, "pnl": pnl, "reason":"IDLE_EXIT", "qty": qty}
                 self.idle_checked = True
 
         minutes_round = (ts - self.round_start_ts).total_seconds()/60.0
         if minutes_round >= self.tcaps.T_total_cap_minutes:
             target = P_BE * (1 + max(self.tcaps.p_exit_min, self.trail.no_loss_epsilon))
             if h >= target:
-                qty = self.Q
-                proceeds = qty * target * (1 - self.fees_sell)
-                pnl = proceeds - self.C
-                log_events.append({"ts": ts, "event":"SELL", "price": target, "proceeds": proceeds, "pnl": pnl, "note":"TOTAL_CAP", "qty": qty})
-                self.round_active = False
-                self.Q = 0.0
-                self.C = 0.0
-                self._reset_btd_progress()
-                return {"sell_price": target, "pnl": pnl, "reason":"TOTAL_CAP", "qty": qty}
+                core = self._core_position()
+                qty = core["qty"]
+                if qty > 0:
+                    proceeds = qty * target * (1 - self.fees_sell)
+                    pnl = proceeds - core["cost"]
+                    log_events.append({"ts": ts, "event":"SELL", "price": target, "proceeds": proceeds, "pnl": pnl, "note":"TOTAL_CAP", "qty": qty})
+                    self.Q = max(self.Q - qty, 0.0)
+                    self.C = max(self.C - core["cost"], 0.0)
+                    if self.Q <= 0:
+                        self.round_active = False
+                    self._reset_btd_progress()
+                    return {"sell_price": target, "pnl": pnl, "reason":"TOTAL_CAP", "qty": qty}
         return None
