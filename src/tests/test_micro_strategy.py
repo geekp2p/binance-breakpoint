@@ -137,3 +137,43 @@ def test_micro_stop_clamped_and_no_oversell():
     assert state.Q >= 0
     # Remaining qty should stay on the books if we sold only part of it
     assert any(pos["qty"] > 0 for pos in state.micro_positions) or not state.micro_positions
+
+
+def test_micro_loss_recovery_boosts_next_take_profit():
+    state = make_state()
+    state.micro.loss_recovery_markup_pct = 0.002
+    state.micro.loss_recovery_max_pct = 0.02
+    state.rebuild_ladder(100.0)
+    seed_micro_ready(state)
+
+    events = []
+    ts = pd.Timestamp("2025-01-01T00:00:00Z")
+    state._maybe_micro_buy(ts, h=100.3, l=99.7, log_events=events)
+    position = state.micro_positions[0]
+
+    # Simulate high taker fees so a stop exit realises a loss
+    state.fees_sell = 0.01
+
+    events.clear()
+    # Force a stop exit so realised PnL is negative
+    state._check_micro_take_profit(ts, h=position["stop"], l=position["stop"], log_events=events)
+    assert state.micro_loss_recovery_pct == state.micro.loss_recovery_markup_pct
+
+    # Allow cooldown to expire and rebuild a new ready window below last exit
+    state.bar_index = state.micro_cooldown_until_bar + 2
+    base = state.micro_last_exit_price * (1 - state.micro.reentry_drop_pct - 0.002)
+    state.micro_prices = [base * (1 + d) for d in (0.0004, -0.0006, 0.0009, -0.0003, 0.0007)]
+    state.micro_swings = state.micro.min_swings
+    state.micro_last_direction = None
+    state.ladder_next_idx = 0
+
+    events.clear()
+    state._maybe_micro_buy(ts, h=base * 1.001, l=base * 0.999, log_events=events)
+    buy_event = next(e for e in events if e["event"] == "MICRO_BUY")
+    assert buy_event["target"] == buy_event["price"] * (1 + state.micro.take_profit_pct + state.micro_loss_recovery_pct)
+
+    # A profitable exit should reset the recovery boost
+    position = state.micro_positions[0]
+    events.clear()
+    state._check_micro_take_profit(ts, h=position["target"], l=position["target"], log_events=events)
+    assert state.micro_loss_recovery_pct == 0.0

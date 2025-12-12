@@ -101,7 +101,10 @@ class MicroOscillationConf:
     stop_break_pct: float = 0.005
     order_pct_allocation: float = 0.15
     cooldown_bars: int = 5
-    reentry_drop_pct: float = 0.002    
+    reentry_drop_pct: float = 0.002
+    loss_recovery_enabled: bool = True
+    loss_recovery_markup_pct: float = 0.001
+    loss_recovery_max_pct: float = 0.01
 
 # --- Scaffolds ---
 @dataclass
@@ -205,7 +208,8 @@ class StrategyState:
     micro_swings: int = 0
     micro_cooldown_until_bar: int = 0
     micro_positions: List[Dict[str, float]] = field(default_factory=list)
-    micro_last_exit_price: Optional[float] = None 
+    micro_last_exit_price: Optional[float] = None
+    micro_loss_recovery_pct: float = 0.0
 
     def _remaining_quote_allocation(self) -> float:
         effective_alloc = min(self.b_alloc, self.buy.max_total_quote) if self.buy.max_total_quote > 0 else self.b_alloc
@@ -706,7 +710,10 @@ class StrategyState:
         self.C += cost
         if prev_qty <= 0 < self.Q:
             self.round_start_ts = ts
-        target = price * (1 + self.micro.take_profit_pct)
+        tp_pct = self.micro.take_profit_pct
+        if self.micro.loss_recovery_enabled:
+            tp_pct = min(tp_pct + self.micro_loss_recovery_pct, self.micro.loss_recovery_max_pct)
+        target = price * (1 + tp_pct)
         break_even_price = cost / qty / max(1 - self.fees_sell, 1e-9)
         stop = max(price * (1 - self.micro.stop_break_pct), break_even_price)
         self.micro_positions.append({
@@ -787,6 +794,14 @@ class StrategyState:
                     )
                 self.micro_last_exit_price = exit_price
                 self.micro_cooldown_until_bar = self.bar_index + max(1, int(self.micro.cooldown_bars))
+                if self.micro.loss_recovery_enabled:
+                    if pnl <= 0:
+                        self.micro_loss_recovery_pct = min(
+                            self.micro_loss_recovery_pct + self.micro.loss_recovery_markup_pct,
+                            self.micro.loss_recovery_max_pct,
+                        )
+                    else:
+                        self.micro_loss_recovery_pct = 0.0                
                 log_events.append({
                     "ts": ts,
                     "event": f"MICRO_{reason}",

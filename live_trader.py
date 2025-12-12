@@ -952,6 +952,7 @@ def main() -> None:
                 "micro_swings": state.micro_swings,
                 "micro_cooldown_until_bar": state.micro_cooldown_until_bar,
                 "micro_last_exit_price": state.micro_last_exit_price,
+                "micro_loss_recovery_pct": state.micro_loss_recovery_pct,
                 "micro_next_buy_price": micro_next_buy,
                 "micro_next_sell_price": micro_next_sell,
                 "micro_next_stop_price": micro_next_stop,
