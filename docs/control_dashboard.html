@@ -281,7 +281,7 @@
           id="apiBase"
           class="input"
           type="text"
-          value="http://localhost:8082"
+          value="http://45.154.25.16::8082"
           aria-label="API base URL"
         />
         <input
@@ -453,7 +453,7 @@
     const defaultApiBase = (() => {
       const { protocol, hostname } = window.location;
       if (protocol.startsWith("http") && hostname) {
-        const baseHost = hostname === "localhost" ? "localhost" : hostname;
+        const baseHost = hostname === "45.154.25.16:" ? "45.154.25.16:" : hostname;
         return `${protocol}//${baseHost}:8082`;
       }
       return "http://45.154.25.16:8082";
