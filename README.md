@@ -17,13 +17,13 @@ docker compose up demo
 ```
 
 ## New: fast-forward simulation (3 days -> ~3 hours)
-- รันบริการจำลองแบบเร่งเวลาด้วย Docker (ไม่ต้องตั้งค่าเพิ่ม):
+- รันบริการจำลองแบบเร่งเวลาด้วย Docker (ไม่ต้องตั้งค่าเพิ่ม) พร้อม UI ทดสอบ:
   ```bash
-  docker compose up simulation
+  docker compose up backtest simulation
   ```
 - เปิดหน้า `http://localhost:8181/` (UI เดียวกับ backtest) แล้วกรอก `Symbol` (เว้นว่างเพื่อใช้คู่แรกใน config), `Lookback days`, `Time acceleration (×)` แล้วกด **Simulate**
-- UI จะคุยกับ API `http://localhost:8082` อัตโนมัติ พร้อมดึง `/health` ทุก ~7 วินาที เพื่ออัปเดตสถานะ/PNL และ log ล่าสุด 5 รายการ
-- อยากเริ่มรอบใหม่ก็กด **Simulate** ซ้ำได้เลย ไม่ต้องเข้า CLI
+- ปุ่ม **Pause/Resume/Stop** ในการ์ด Simulation เรียก `/pause`, `/resume`, `/stop` บน API `http://localhost:8082` อัตโนมัติ ไม่ต้องรัน `python -m py_compile` หรือสั่งผ่าน CLI เอง
+- UI จะดึง `/health` ทุก ~7 วินาที เพื่ออัปเดตสถานะ/PNL และ log ล่าสุด 5 รายการ; อยากเริ่มรอบใหม่ก็กด **Simulate** ซ้ำได้เลย
 
 ## New: lightweight HTTP backtest service (port 8181)
 Run an isolated backtest API + minimal UI (separateจาก live HTML):

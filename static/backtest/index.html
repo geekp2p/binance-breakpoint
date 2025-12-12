@@ -12,6 +12,9 @@
     input, select { padding: 0.45rem; margin-top: 0.25rem; width: 100%; max-width: 360px; }
     button { margin-top: 1rem; padding: 0.6rem 1.1rem; font-weight: bold; background: #0b8bd9; color: #fff; border: none; border-radius: 4px; cursor: pointer; }
     button[disabled] { background: #9fbad1; cursor: not-allowed; }
+    .btn-ghost { background: #eef2f5; color: #0b5db3; margin-left: 0.6rem; }
+    .btn-ghost:hover { background: #dfe8f1; }
+    .btn-ghost:disabled { background: #f4f7fa; color: #9fbad1; }
     .status { margin-top: 0.5rem; font-size: 0.95rem; color: #555; }
     .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem; margin-top: 1rem; }
     table { width: 100%; border-collapse: collapse; background: #fff; box-shadow: 0 1px 4px rgba(0,0,0,0.1); }
@@ -71,7 +74,12 @@
       <label for="simulate-speed">Time acceleration (×)</label>
       <input id="simulate-speed" name="speed" type="number" min="1" step="1" value="24" />
 
-      <button type="submit" id="simulate-btn">Simulate</button>
+      <div style="display: flex; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
+        <button type="submit" id="simulate-btn">Simulate</button>
+        <button type="button" id="simulate-pause" class="btn-ghost">Pause</button>
+        <button type="button" id="simulate-resume" class="btn-ghost">Resume</button>
+        <button type="button" id="simulate-stop" class="btn-ghost">Stop</button>
+      </div>
       <div class="status" id="simulate-status">No run yet</div>
     </form>
 
@@ -158,6 +166,9 @@
     const simulateForm = document.getElementById('simulate-form');
     const simulateStatus = document.getElementById('simulate-status');
     const simulateBtn = document.getElementById('simulate-btn');
+    const simulatePauseBtn = document.getElementById('simulate-pause');
+    const simulateResumeBtn = document.getElementById('simulate-resume');
+    const simulateStopBtn = document.getElementById('simulate-stop');
     const simulateMeta = document.getElementById('simulate-meta');
     const simulateTotals = document.getElementById('simulate-totals');
     const simulateLogs = document.getElementById('simulate-logs');
@@ -347,6 +358,22 @@
         simulateBtn.disabled = false;
       }
     });
+
+    async function postSimAction(path, successText) {
+      try {
+        const resp = await fetch(`${simApiBase.replace(/\/$/, '')}/${path}`, { method: 'POST' });
+        if (!resp.ok) throw new Error(await resp.text());
+        const data = await resp.json();
+        setSimStatus(successText, '#0b8bd9', (data.status || '').toUpperCase() || successText.toUpperCase());
+        await refreshSimStatus();
+      } catch (err) {
+        setSimStatus(`Failed: ${err.message || err}`, '#d7263d', 'ERROR');
+      }
+    }
+
+    simulatePauseBtn.addEventListener('click', () => postSimAction('pause', 'Simulation paused'));
+    simulateResumeBtn.addEventListener('click', () => postSimAction('resume', 'Simulation resumed'));
+    simulateStopBtn.addEventListener('click', () => postSimAction('stop', 'Simulation stopped'));
 
     setSimStatus('Ready to simulate', '#edf3f8', 'IDLE');
     refreshSimStatus();
