@@ -77,8 +77,12 @@ pairs:
         stop_break_pct: 0.005
         # Minimum margin above break-even (after fees) for micro exits
         min_profit_pct: 0.002
+        volatility_stop_mult: 0.9
+        volatility_take_profit_mult: 0.6
+        volatility_reentry_mult: 0.8
         order_pct_allocation: 0.15
         cooldown_bars: 5
+        min_exit_qty: 0.0
       buy_the_dip:
         # เปิดซื้อดักหลุดบันได (dip) แยกจาก n_steps หลัก
         enabled: true
@@ -200,8 +204,12 @@ pairs:
         stop_break_pct: 0.005
         # Minimum margin above break-even (after fees) for micro exits
         min_profit_pct: 0.002
+        volatility_stop_mult: 0.9
+        volatility_take_profit_mult: 0.6
+        volatility_reentry_mult: 0.8
         order_pct_allocation: 0.15
         cooldown_bars: 5
+        min_exit_qty: 0.0
       buy_the_dip:
         # เปิดซื้อดักหลุดบันได (dip) แยกจาก n_steps หลัก
         enabled: true
@@ -323,8 +331,12 @@ pairs:
         stop_break_pct: 0.005
         # Minimum margin above break-even (after fees) for micro exits
         min_profit_pct: 0.002
+        volatility_stop_mult: 0.9
+        volatility_take_profit_mult: 0.6
+        volatility_reentry_mult: 0.8
         order_pct_allocation: 0.15
         cooldown_bars: 5
+        min_exit_qty: 0.0
       buy_the_dip:
         # เปิดซื้อดักหลุดบันได (dip) แยกจาก n_steps หลัก
         enabled: true
@@ -446,8 +458,12 @@ pairs:
         stop_break_pct: 0.005
         # Minimum margin above break-even (after fees) for micro exits
         min_profit_pct: 0.002
+        volatility_stop_mult: 0.9
+        volatility_take_profit_mult: 0.6
+        volatility_reentry_mult: 0.8
         order_pct_allocation: 0.15
         cooldown_bars: 5
+        min_exit_qty: 0.0
       buy_the_dip:
         # เปิดซื้อดักหลุดบันได (dip) แยกจาก n_steps หลัก
         enabled: true
@@ -569,8 +585,12 @@ pairs:
         stop_break_pct: 0.005
         # Minimum margin above break-even (after fees) for micro exits
         min_profit_pct: 0.002
+        volatility_stop_mult: 0.9
+        volatility_take_profit_mult: 0.6
+        volatility_reentry_mult: 0.8
         order_pct_allocation: 0.15
         cooldown_bars: 5
+        min_exit_qty: 0.0
       buy_the_dip:
         # เปิดซื้อดักหลุดบันได (dip) แยกจาก n_steps หลัก
         enabled: true
@@ -693,8 +713,12 @@ pairs:
         stop_break_pct: 0.005
         # Minimum margin above break-even (after fees) for micro exits
         min_profit_pct: 0.002
+        volatility_stop_mult: 0.9
+        volatility_take_profit_mult: 0.6
+        volatility_reentry_mult: 0.8
         order_pct_allocation: 0.15
         cooldown_bars: 5
+        min_exit_qty: 0.0
       buy_the_dip:
         # เปิดซื้อดักหลุดบันได (dip) แยกจาก n_steps หลัก
         enabled: true

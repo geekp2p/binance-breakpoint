@@ -100,6 +100,9 @@ class MicroOscillationConf:
     take_profit_pct: float = 0.0025
     stop_break_pct: float = 0.005
     min_profit_pct: float = 0.0015
+    volatility_stop_mult: float = 0.9
+    volatility_take_profit_mult: float = 0.6
+    volatility_reentry_mult: float = 0.8
     order_pct_allocation: float = 0.15
     cooldown_bars: int = 5
     reentry_drop_pct: float = 0.002
@@ -110,7 +113,8 @@ class MicroOscillationConf:
     atr_stop_mult: float = 1.0
     atr_take_profit_mult: float = 1.0
     atr_reentry_mult: float = 1.0
-    min_exit_notional: float = 1e-06    
+    min_exit_notional: float = 1e-06
+    min_exit_qty: float = 1e-06
 
 # --- Scaffolds ---
 @dataclass
@@ -715,9 +719,22 @@ class StrategyState:
             return
         
         atr_pct = self._micro_atr_pct()
-        stop_break_pct = self.micro.stop_break_pct
-        tp_pct = self.micro.take_profit_pct
-        reentry_drop_pct = self.micro.reentry_drop_pct
+        volatility_pct = snap["band_pct"]
+        if atr_pct is not None:
+            volatility_pct = max(volatility_pct, atr_pct)
+
+        stop_break_pct = max(
+            self.micro.stop_break_pct,
+            volatility_pct * self.micro.volatility_stop_mult,
+        )
+        tp_pct = max(
+            self.micro.take_profit_pct,
+            volatility_pct * self.micro.volatility_take_profit_mult,
+        )
+        reentry_drop_pct = max(
+            self.micro.reentry_drop_pct,
+            volatility_pct * self.micro.volatility_reentry_mult,
+        )
         if atr_pct is not None:
             stop_break_pct = max(stop_break_pct, atr_pct * self.micro.atr_stop_mult)
             tp_pct = max(tp_pct, atr_pct * self.micro.atr_take_profit_mult)
@@ -824,32 +841,34 @@ class StrategyState:
                 reason = "STOP"
             if exit_price is not None:
                 qty_to_sell = min(qty, self.Q)
-                if qty_to_sell <= 0:
-                    notional = qty * exit_price
-                    if notional <= max(self.micro.min_exit_notional, 0.0):
-                        log_events.append(
-                            {
-                                "ts": ts,
-                                "event": "MICRO_EXIT_PRUNED",
-                                "reason": "TINY_REMAINDER",
-                                "qty": qty,
-                                "price": exit_price,
-                            }
-                        )
-                        self.micro_last_exit_price = exit_price
-                        self.micro_cooldown_until_bar = self.bar_index + max(1, int(self.micro.cooldown_bars))
-                        continue
-                    else:
-                        log_events.append(
-                            {
-                                "ts": ts,
-                                "event": "MICRO_EXIT_SKIPPED",
-                                "reason": "NO_QTY",
-                                "qty": qty,
-                            }
-                        )
-                        remaining_positions.append(pos)
-                        continue
+                if qty_to_sell <= max(self.micro.min_exit_qty, 0.0):
+                    log_events.append(
+                        {
+                            "ts": ts,
+                            "event": "MICRO_EXIT_PRUNED",
+                            "reason": "NO_QTY" if qty_to_sell <= 0 else "TINY_QTY",
+                            "qty": qty,
+                            "price": exit_price,
+                        }
+                    )
+                    self.micro_last_exit_price = exit_price
+                    self.micro_cooldown_until_bar = self.bar_index + max(1, int(self.micro.cooldown_bars))
+                    continue
+
+                notional = qty_to_sell * exit_price
+                if notional <= max(self.micro.min_exit_notional, 0.0):
+                    log_events.append(
+                        {
+                            "ts": ts,
+                            "event": "MICRO_EXIT_PRUNED",
+                            "reason": "TINY_REMAINDER",
+                            "qty": qty_to_sell,
+                            "price": exit_price,
+                        }
+                    )
+                    self.micro_last_exit_price = exit_price
+                    self.micro_cooldown_until_bar = self.bar_index + max(1, int(self.micro.cooldown_bars))
+                    continue
 
                 cost_share = pos["cost"] * (qty_to_sell / qty)
                 proceeds = qty_to_sell * exit_price * (1 - self.fees_sell)

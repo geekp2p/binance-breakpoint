@@ -1,3 +1,5 @@
+from typing import Any, Dict, List
+
 import pandas as pd
 
 from src.strategy import (
@@ -262,18 +264,22 @@ def test_micro_atr_scales_thresholds():
     state.bar_index = 10
     atr_pct = state._micro_atr_pct()
     assert atr_pct is not None
-    scaled_reentry = max(state.micro.reentry_drop_pct, atr_pct * state.micro.atr_reentry_mult)
     snapshot = state._micro_snapshot()
+    volatility_pct = max(snapshot["band_pct"], atr_pct)
+    scaled_reentry = max(
+        state.micro.reentry_drop_pct,
+        atr_pct * state.micro.atr_reentry_mult,
+        volatility_pct * state.micro.volatility_reentry_mult,
+    )
     entry_guess = snapshot["low"] + (snapshot["high"] - snapshot["low"]) * state.micro.entry_band_pct
     state.micro_last_exit_price = entry_guess * 0.5
-
     events = []
     ts = pd.Timestamp("2025-01-01T00:00:00Z")
     state._maybe_micro_buy(ts, h=101.5, l=98.5, log_events=events)
 
     skip = [e for e in events if e.get("reason") == "NEED_PULLBACK"]
     assert skip, "expected pullback guard when re-entering too soon"
-    assert skip[0]["reentry_drop_pct"] >= atr_pct * state.micro.atr_reentry_mult
+    assert skip[0]["reentry_drop_pct"] >= scaled_reentry
 
     # Allow re-entry after a deeper pullback and check thresholds scale
     events.clear()
@@ -289,7 +295,45 @@ def test_micro_atr_scales_thresholds():
     assert current_atr_pct is not None
     state._maybe_micro_buy(ts, h=deep_pullback_low * 1.01, l=deep_pullback_low * 0.995, log_events=events)
     buy_event = next(e for e in events if e.get("event") == "MICRO_BUY")
-    expected_stop_pct = max(state.micro.stop_break_pct, current_atr_pct * state.micro.atr_stop_mult)
-    expected_tp_pct = max(state.micro.take_profit_pct, current_atr_pct * state.micro.atr_take_profit_mult)
+    current_snapshot = state._micro_snapshot()
+    current_volatility_pct = max(current_snapshot["band_pct"], current_atr_pct)
+    expected_stop_pct = max(
+        state.micro.stop_break_pct,
+        current_volatility_pct * state.micro.volatility_stop_mult,
+        current_atr_pct * state.micro.atr_stop_mult,
+    )
+    expected_tp_pct = max(
+        state.micro.take_profit_pct,
+        current_volatility_pct * state.micro.volatility_take_profit_mult,
+        current_atr_pct * state.micro.atr_take_profit_mult,
+    )
     assert buy_event["target"] >= buy_event["price"] * (1 + expected_tp_pct)
     assert buy_event["stop"] >= buy_event["price"] * (1 - expected_stop_pct)
+
+
+def test_micro_prunes_when_qty_guard_hits():
+    state = make_state()
+    state.micro.min_exit_qty = 0.001
+    state.rebuild_ladder(100.0)
+    seed_micro_ready(state)
+
+    events: List[Dict[str, Any]] = []
+    ts = pd.Timestamp("2025-01-01T00:00:00Z")
+    state._maybe_micro_buy(ts, h=100.2, l=99.7, log_events=events)
+    position = state.micro_positions[0]
+
+    # Exhaust almost all inventory elsewhere so the exit has nothing meaningful to sell
+    state.Q = state.micro.min_exit_qty * 0.5
+    state.C = position["cost"] * (state.Q / position["qty"])
+
+    events.clear()
+    state._check_micro_take_profit(ts, h=position["stop"], l=position["stop"], log_events=events)
+
+    assert not state.micro_positions
+    pruned = next(e for e in events if e["event"] == "MICRO_EXIT_PRUNED")
+    assert pruned["reason"] == "TINY_QTY"
+
+    # A second check should no longer emit new micro stop/exit events
+    events.clear()
+    state._check_micro_take_profit(ts, h=position["stop"], l=position["stop"], log_events=events)
+    assert not events
