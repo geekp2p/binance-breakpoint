@@ -1174,7 +1174,7 @@ def main() -> None:
                 parts.append(f"ns={status['next_sell_price']:.4f}")
             if status["unrealized_pnl"] is not None:
                 parts.append(f"u={status['unrealized_pnl']:.2f}")
-             pnl_breakdown = status.get("pnl_breakdown") or {}
+            pnl_breakdown = status.get("pnl_breakdown") or {}
             realized_bd = pnl_breakdown.get("realized", {})
             unrealized_bd = pnl_breakdown.get("unrealized", {})
             totals_bd = pnl_breakdown.get("totals", {})
