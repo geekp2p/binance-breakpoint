@@ -106,6 +106,11 @@ class MicroOscillationConf:
     loss_recovery_enabled: bool = True
     loss_recovery_markup_pct: float = 0.001
     loss_recovery_max_pct: float = 0.01
+    atr_window: int = 30
+    atr_stop_mult: float = 1.0
+    atr_take_profit_mult: float = 1.0
+    atr_reentry_mult: float = 1.0
+    min_exit_notional: float = 1e-06    
 
 # --- Scaffolds ---
 @dataclass
@@ -653,6 +658,21 @@ class StrategyState:
                 self.micro_swings += 1
             self.micro_last_direction = direction
 
+    def _micro_atr_pct(self) -> Optional[float]:
+        if not self.micro.enabled or len(self.micro_prices) < 2:
+            return None
+        window = max(3, int(self.micro.atr_window))
+        prices = self.micro_prices[-window:]
+        prev = prices[0]
+        true_ranges: List[float] = []
+        for price in prices[1:]:
+            if prev > 0:
+                true_ranges.append(abs(price - prev) / prev)
+            prev = price
+        if not true_ranges:
+            return None
+        return sum(true_ranges) / len(true_ranges)            
+
     def _micro_snapshot(self) -> Optional[Dict[str, float]]:
         if not self.micro.enabled or len(self.micro_prices) < max(5, int(self.micro.window) // 2):
             return None
@@ -694,9 +714,18 @@ class StrategyState:
         if l > entry:
             return
         
+        atr_pct = self._micro_atr_pct()
+        stop_break_pct = self.micro.stop_break_pct
+        tp_pct = self.micro.take_profit_pct
+        reentry_drop_pct = self.micro.reentry_drop_pct
+        if atr_pct is not None:
+            stop_break_pct = max(stop_break_pct, atr_pct * self.micro.atr_stop_mult)
+            tp_pct = max(tp_pct, atr_pct * self.micro.atr_take_profit_mult)
+            reentry_drop_pct = max(reentry_drop_pct, atr_pct * self.micro.atr_reentry_mult)        
+        
         if (
             self.micro_last_exit_price is not None
-            and entry >= self.micro_last_exit_price * (1 - max(self.micro.reentry_drop_pct, 0.0))
+            and entry >= self.micro_last_exit_price * (1 - max(reentry_drop_pct, 0.0))
         ):
             log_events.append(
                 {
@@ -705,6 +734,7 @@ class StrategyState:
                     "reason": "NEED_PULLBACK",
                     "entry": entry,
                     "last_exit": self.micro_last_exit_price,
+                    "reentry_drop_pct": reentry_drop_pct,
                 }
             )
             self.micro_cooldown_until_bar = self.bar_index + max(1, int(self.micro.cooldown_bars))
@@ -729,7 +759,7 @@ class StrategyState:
         self.C += cost
         if prev_qty <= 0 < self.Q:
             self.round_start_ts = ts
-        tp_pct = self.micro.take_profit_pct
+        tp_pct = tp_pct
         if self.micro.loss_recovery_enabled:
             tp_pct = min(tp_pct + self.micro_loss_recovery_pct, self.micro.loss_recovery_max_pct)
         break_even_price = cost / qty / max(1 - self.fees_sell, 1e-9)
@@ -742,7 +772,7 @@ class StrategyState:
         min_profit_price = break_even_price * (1 + min_profit_pct)
         if target < min_profit_price:
             target = min_profit_price
-        stop = max(price * (1 - self.micro.stop_break_pct), break_even_price)
+        stop = max(price * (1 - stop_break_pct), break_even_price)
         self.micro_positions.append({
             "entry": price,
             "qty": qty,
@@ -795,16 +825,31 @@ class StrategyState:
             if exit_price is not None:
                 qty_to_sell = min(qty, self.Q)
                 if qty_to_sell <= 0:
-                    log_events.append(
-                        {
-                            "ts": ts,
-                            "event": "MICRO_EXIT_SKIPPED",
-                            "reason": "NO_QTY",
-                            "qty": qty,
-                        }
-                    )
-                    remaining_positions.append(pos)
-                    continue
+                    notional = qty * exit_price
+                    if notional <= max(self.micro.min_exit_notional, 0.0):
+                        log_events.append(
+                            {
+                                "ts": ts,
+                                "event": "MICRO_EXIT_PRUNED",
+                                "reason": "TINY_REMAINDER",
+                                "qty": qty,
+                                "price": exit_price,
+                            }
+                        )
+                        self.micro_last_exit_price = exit_price
+                        self.micro_cooldown_until_bar = self.bar_index + max(1, int(self.micro.cooldown_bars))
+                        continue
+                    else:
+                        log_events.append(
+                            {
+                                "ts": ts,
+                                "event": "MICRO_EXIT_SKIPPED",
+                                "reason": "NO_QTY",
+                                "qty": qty,
+                            }
+                        )
+                        remaining_positions.append(pos)
+                        continue
 
                 cost_share = pos["cost"] * (qty_to_sell / qty)
                 proceeds = qty_to_sell * exit_price * (1 - self.fees_sell)

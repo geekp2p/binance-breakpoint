@@ -219,3 +219,77 @@ def test_micro_take_profit_respects_fees_and_margin():
     break_even = position["cost"] / position["qty"] / (1 - state.fees_sell)
     effective_min_profit = max(state.micro.min_profit_pct, state.fees_buy + state.fees_sell)
     assert position["target"] >= break_even * (1 + effective_min_profit)
+
+
+def test_micro_prunes_tiny_remainders():
+    state = make_state()
+    state.micro.min_exit_notional = 1e6  # force pruning for the test
+    state.rebuild_ladder(100.0)
+    seed_micro_ready(state)
+
+    events = []
+    ts = pd.Timestamp("2025-01-01T00:00:00Z")
+    state._maybe_micro_buy(ts, h=100.2, l=99.7, log_events=events)
+
+    position = state.micro_positions[0]
+    # Simulate that inventory was cleared elsewhere
+    state.Q = 0.0
+    state.C = 0.0
+
+    events.clear()
+    state._check_micro_take_profit(ts, h=position["stop"], l=position["stop"], log_events=events)
+
+    assert not state.micro_positions, "stale micro position should be pruned"
+    assert any(e["event"] == "MICRO_EXIT_PRUNED" for e in events)
+
+
+def test_micro_atr_scales_thresholds():
+    state = make_state()
+    state.micro.take_profit_pct = 0.001
+    state.micro.stop_break_pct = 0.001
+    state.micro.reentry_drop_pct = 0.001
+    state.micro.max_band_pct = 0.05
+    state.micro.loss_recovery_max_pct = 0.05
+    state.micro.atr_take_profit_mult = 2.5
+    state.micro.atr_stop_mult = 2.5
+    state.micro.atr_reentry_mult = 1.5
+    state.rebuild_ladder(100.0)
+
+    volatile_prices = [100 * (1 + delta) for delta in (0.0, 0.012, -0.01, 0.015, -0.012, 0.014, -0.011)]
+    for price in volatile_prices:
+        state._update_micro_window(price)
+    state.micro_swings = state.micro.min_swings
+    state.bar_index = 10
+    atr_pct = state._micro_atr_pct()
+    assert atr_pct is not None
+    scaled_reentry = max(state.micro.reentry_drop_pct, atr_pct * state.micro.atr_reentry_mult)
+    snapshot = state._micro_snapshot()
+    entry_guess = snapshot["low"] + (snapshot["high"] - snapshot["low"]) * state.micro.entry_band_pct
+    state.micro_last_exit_price = entry_guess * 0.5
+
+    events = []
+    ts = pd.Timestamp("2025-01-01T00:00:00Z")
+    state._maybe_micro_buy(ts, h=101.5, l=98.5, log_events=events)
+
+    skip = [e for e in events if e.get("reason") == "NEED_PULLBACK"]
+    assert skip, "expected pullback guard when re-entering too soon"
+    assert skip[0]["reentry_drop_pct"] >= atr_pct * state.micro.atr_reentry_mult
+
+    # Allow re-entry after a deeper pullback and check thresholds scale
+    events.clear()
+    state.bar_index = state.micro_cooldown_until_bar + 1
+    state.micro_last_exit_price = state.micro_last_exit_price * (1 + state.micro.reentry_drop_pct)
+    deep_pullback_low = state.micro_last_exit_price * (1 - scaled_reentry - 0.005)
+    state.micro_prices = [deep_pullback_low * (1 + delta) for delta in (0.002, -0.003, 0.004, -0.002, 0.003)]
+    state.micro_swings = state.micro.min_swings
+    state.micro_last_direction = None
+    state.bar_index += 1
+
+    current_atr_pct = state._micro_atr_pct()
+    assert current_atr_pct is not None
+    state._maybe_micro_buy(ts, h=deep_pullback_low * 1.01, l=deep_pullback_low * 0.995, log_events=events)
+    buy_event = next(e for e in events if e.get("event") == "MICRO_BUY")
+    expected_stop_pct = max(state.micro.stop_break_pct, current_atr_pct * state.micro.atr_stop_mult)
+    expected_tp_pct = max(state.micro.take_profit_pct, current_atr_pct * state.micro.atr_take_profit_mult)
+    assert buy_event["target"] >= buy_event["price"] * (1 + expected_tp_pct)
+    assert buy_event["stop"] >= buy_event["price"] * (1 - expected_stop_pct)
