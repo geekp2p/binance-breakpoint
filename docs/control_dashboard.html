@@ -465,7 +465,7 @@
     const defaultApiBase = (() => {
       const { protocol, hostname } = window.location;
       if (protocol.startsWith("http") && hostname) {
-        const baseHost = hostname === "45.154.25.16:" ? "45.154.25.16:" : hostname;
+        const baseHost = hostname.replace(/:+$/, "");
         return `${protocol}//${baseHost}:8082`;
       }
       return "http://45.154.25.16:8082";
