@@ -27,6 +27,7 @@ from src.savepoint import (
     load_savepoint,
     write_savepoint,
 )
+from src.order_sizing import clear_position_state
 from src.profit_allocator import ProfitAllocator, ProfitRecycleConfig
 
 
@@ -1675,6 +1676,7 @@ def main() -> None:
                     )
                     realized_pnl = float(res.get("pnl") or 0.0)
                     if client and sell_qty > 0:
+                        available = None
                         if base_asset:
                             try:
                                 available = client.get_free_balance(base_asset)
@@ -1687,30 +1689,59 @@ def main() -> None:
                                     sell_qty = available
                             except Exception as exc:
                                 logging.warning("Unable to fetch %s balance: %s", base_asset, exc)
-                        if sell_qty > 0:
-                            chunk_count = sell_chunks if (sell_chunks > 1 and (realized_pnl > 0 or not sell_profit_only)) else 1
-                            chunk_count = max(chunk_count, 1)
-                            chunk_size = sell_qty / chunk_count
-                            sold_total = 0.0
-                            all_fills = []
-                            for idx in range(chunk_count):
-                                qty_chunk = chunk_size if idx < chunk_count - 1 else sell_qty - sold_total
-                                if qty_chunk <= 0:
-                                    continue
-                                response = client.market_sell(pair_cfg.symbol, qty_chunk)
-                                all_fills.extend(response.get("fills") or [])
-                                sold_total += qty_chunk
-                                logging.info(
-                                    "Sell response (%s/%s): %s",
-                                    idx + 1,
-                                    chunk_count,
-                                    json.dumps(response),
-                                )
-                                log_order_summary("SELL", response)
-                                if sell_chunk_delay > 0 and idx < chunk_count - 1:
-                                    time.sleep(sell_chunk_delay)
-                            sell_qty = sold_total
-                            profit_allocator.record_fees_from_fills(pair_symbol, all_fills, pair_cfg.quote)
+                        normalized_qty, norm_reason = client.normalize_quantity(
+                            pair_cfg.symbol,
+                            sell_qty,
+                            price=kline.get("close"),
+                            allow_round_up=True,
+                        )
+                        if available is not None and normalized_qty > available:
+                            norm_reason = "INSUFFICIENT_FOR_ROUND_UP"
+                            normalized_qty = 0.0
+                        if normalized_qty <= 0:
+                            logging.warning(
+                                "Skipping exit because qty %.8f is below exchange minimum (%s)",
+                                sell_qty,
+                                norm_reason,
+                            )
+                            record_history(
+                                {
+                                    "ts": ts,
+                                    "event": "EXIT_SKIPPED",
+                                    "reason": norm_reason,
+                                    "requested_qty": sell_qty,
+                                }
+                            )
+                            clear_position_state(state)
+                            reset_round(state, kline["close"], ts)
+                            event_log.clear()
+                            event_ptr = 0
+                            event_persist_count = 0
+                            continue
+                        sell_qty = normalized_qty
+                        chunk_count = sell_chunks if (sell_chunks > 1 and (realized_pnl > 0 or not sell_profit_only)) else 1
+                        chunk_count = max(chunk_count, 1)
+                        chunk_size = sell_qty / chunk_count
+                        sold_total = 0.0
+                        all_fills = []
+                        for idx in range(chunk_count):
+                            qty_chunk = chunk_size if idx < chunk_count - 1 else sell_qty - sold_total
+                            if qty_chunk <= 0:
+                                continue
+                            response = client.market_sell(pair_cfg.symbol, qty_chunk)
+                            all_fills.extend(response.get("fills") or [])
+                            sold_total += qty_chunk
+                            logging.info(
+                                "Sell response (%s/%s): %s",
+                                idx + 1,
+                                chunk_count,
+                                json.dumps(response),
+                            )
+                            log_order_summary("SELL", response)
+                            if sell_chunk_delay > 0 and idx < chunk_count - 1:
+                                time.sleep(sell_chunk_delay)
+                        sell_qty = sold_total
+                        profit_allocator.record_fees_from_fills(pair_symbol, all_fills, pair_cfg.quote)
                     if qty > 0 and sell_qty != qty:
                         realized_pnl *= sell_qty / qty
                     realized_pnl_total += realized_pnl

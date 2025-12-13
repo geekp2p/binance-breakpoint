@@ -3,11 +3,12 @@ import math
 import hmac
 import hashlib
 import logging
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 from urllib.parse import urlencode
 
 import requests
 
+from .order_sizing import normalize_quantity
 
 class BinanceClient:
     """Minimal REST client for Binance spot trading."""
@@ -66,21 +67,45 @@ class BinanceClient:
     def _format_number(value: float, precision: int = 8) -> str:
         return f"{value:.{precision}f}".rstrip("0").rstrip(".") or "0"
 
-    def _apply_lot_step(self, symbol: str, quantity: float) -> float:
+    def _lot_filters(self, symbol: str) -> Tuple[Optional[float], Optional[float]]:
         info = self.get_symbol_info(symbol)
         for f in info.get("filters", []):
             if f.get("filterType") == "LOT_SIZE":
-                step = float(f["stepSize"])
-                min_qty = float(f["minQty"])
-                if step <= 0:
-                    return quantity
-                qty_steps = math.floor(quantity / step)
-                adjusted = qty_steps * step
-                if adjusted < min_qty:
-                    return 0.0
-                precision = max(len(f["stepSize"].split(".")[-1].rstrip("0")), 0)
-                return float(self._format_number(adjusted, precision))
-        return quantity
+                try:
+                    step = float(f["stepSize"])
+                    min_qty = float(f["minQty"])
+                    return min_qty, step
+                except (TypeError, ValueError, KeyError):
+                    return None, None
+        return None, None
+
+    def _apply_lot_step(self, symbol: str, quantity: float) -> float:
+        min_qty, step = self._lot_filters(symbol)
+        if step is None or step <= 0:
+            return quantity
+        qty_steps = math.floor(quantity / step)
+        adjusted = qty_steps * step
+        if min_qty is not None and adjusted < min_qty:
+            return 0.0
+        precision = max(len(str(step).split(".")[-1].rstrip("0")), 0)
+        return float(self._format_number(adjusted, precision))
+
+    def normalize_quantity(self, symbol: str, quantity: float, *, price: Optional[float] = None,
+                            allow_round_up: bool = False) -> Tuple[float, str]:
+        min_qty, step = self._lot_filters(symbol)
+        min_notional = self.get_min_notional(symbol)
+        qty, reason = normalize_quantity(
+            quantity,
+            min_qty=min_qty or 0.0,
+            step_size=step,
+            price=price,
+            min_notional=min_notional,
+            allow_round_up=allow_round_up,
+        )
+        if step:
+            precision = max(len(str(step).split(".")[-1].rstrip("0")), 0)
+            qty = float(self._format_number(qty, precision))
+        return qty, reason
 
     def get_min_notional(self, symbol: str) -> Optional[float]:
         """Return the minimum notional requirement for the symbol, if present."""
