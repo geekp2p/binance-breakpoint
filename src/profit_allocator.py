@@ -49,7 +49,10 @@ class ProfitAllocator:
             "discount_pools": {},  # symbol -> {pending_quote, holdings_qty, quote_spent}
             "bnb_pending_quote": 0.0,
             "bnb_holdings_qty": 0.0,
-            "fees_paid": {"totals": {"quote": 0.0, "bnb": 0.0, "other": {}}, "per_pair": {}},
+            "fees_paid": {
+                "totals": {"quote": 0.0, "bnb": 0.0, "other": {}, "by_strategy": {}},
+                "per_pair": {},
+            },
             "history": [],
             "last_updated": None,
         }
@@ -89,8 +92,14 @@ class ProfitAllocator:
     def _fees_bucket_locked(self, pair_symbol: str) -> Dict[str, object]:
         fees = self.state.setdefault("fees_paid", {})
         per_pair = fees.setdefault("per_pair", {})
-        bucket = per_pair.setdefault(pair_symbol, {"quote": 0.0, "bnb": 0.0, "other": {}})
+        bucket = per_pair.setdefault(
+            pair_symbol, {"quote": 0.0, "bnb": 0.0, "other": {}, "by_strategy": {}}
+        )
         return bucket  # type: ignore[return-value]
+
+    def _fees_strategy_bucket(self, bucket: Dict[str, object], source: str) -> Dict[str, object]:
+        by_strategy = bucket.setdefault("by_strategy", {})
+        return by_strategy.setdefault(source, {"quote": 0.0, "bnb": 0.0, "other": {}})
 
     def _bnb_asset(self, quote_asset: str) -> str:
         symbol = self.config.bnb_symbol.upper()
@@ -99,7 +108,9 @@ class ProfitAllocator:
             return symbol[: -len(quote)]
         return symbol
 
-    def record_fees_from_fills(self, pair_symbol: str, fills, quote_asset: str) -> None:
+    def record_fees_from_fills(
+        self, pair_symbol: str, fills, quote_asset: str, *, source: str = "ladder"
+    ) -> None:
         if not fills:
             return
         quote = quote_asset.upper()
@@ -107,7 +118,7 @@ class ProfitAllocator:
         updated = False
         with self._lock:
             totals = self.state.setdefault("fees_paid", {}).setdefault(
-                "totals", {"quote": 0.0, "bnb": 0.0, "other": {}}
+                "totals", {"quote": 0.0, "bnb": 0.0, "other": {}, "by_strategy": {}}
             )
             for fill in fills:
                 try:
@@ -118,17 +129,27 @@ class ProfitAllocator:
                 if commission <= 0 or not asset:
                     continue
                 bucket = self._fees_bucket_locked(pair_symbol)
+                strat_bucket = self._fees_strategy_bucket(bucket, source)
+                totals_strat = self._fees_strategy_bucket(totals, source)
                 if asset == quote:
                     bucket["quote"] = float(bucket.get("quote", 0.0)) + commission
                     totals["quote"] = float(totals.get("quote", 0.0)) + commission
+                    strat_bucket["quote"] = float(strat_bucket.get("quote", 0.0)) + commission
+                    totals_strat["quote"] = float(totals_strat.get("quote", 0.0)) + commission
                 elif asset == bnb_asset:
                     bucket["bnb"] = float(bucket.get("bnb", 0.0)) + commission
                     totals["bnb"] = float(totals.get("bnb", 0.0)) + commission
+                    strat_bucket["bnb"] = float(strat_bucket.get("bnb", 0.0)) + commission
+                    totals_strat["bnb"] = float(totals_strat.get("bnb", 0.0)) + commission
                 else:
                     other_bucket = bucket.setdefault("other", {})
                     total_other = totals.setdefault("other", {})
+                    strat_other = strat_bucket.setdefault("other", {})
+                    total_other_strat = totals_strat.setdefault("other", {})
                     other_bucket[asset] = float(other_bucket.get(asset, 0.0)) + commission
                     total_other[asset] = float(total_other.get(asset, 0.0)) + commission
+                    strat_other[asset] = float(strat_other.get(asset, 0.0)) + commission
+                    total_other_strat[asset] = float(total_other_strat.get(asset, 0.0)) + commission
                 updated = True
             if updated:
                 self._persist_locked()
@@ -197,11 +218,27 @@ class ProfitAllocator:
                     "quote": float(pair_bucket.get("quote", 0.0)),
                     "bnb": float(pair_bucket.get("bnb", 0.0)),
                     "other": dict(pair_bucket.get("other", {})),
+                    "by_strategy": {
+                        name: {
+                            "quote": float(bucket.get("quote", 0.0)),
+                            "bnb": float(bucket.get("bnb", 0.0)),
+                            "other": dict(bucket.get("other", {})),
+                        }
+                        for name, bucket in (pair_bucket.get("by_strategy") or {}).items()
+                    },
                 },
                 "totals": {
                     "quote": float((totals or {}).get("quote", 0.0)),
                     "bnb": float((totals or {}).get("bnb", 0.0)),
                     "other": dict((totals or {}).get("other", {})),
+                    "by_strategy": {
+                        name: {
+                            "quote": float(bucket.get("quote", 0.0)),
+                            "bnb": float(bucket.get("bnb", 0.0)),
+                            "other": dict(bucket.get("other", {})),
+                        }
+                        for name, bucket in (totals or {}).get("by_strategy", {}).items()
+                    },
                 },
             }
         return snapshot

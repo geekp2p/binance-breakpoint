@@ -172,14 +172,22 @@ class SimulationRunner:
                 "unrealized_pnl": unrealized,
                 "realized_pnl_total": self._realized,
                 "pnl_total": self._realized + (unrealized or 0.0),
-                "phase": row.get("phase") or "SIM", 
+                "pnl_breakdown": {
+                    "realized": {"ladder": self._realized, "micro": 0.0},
+                    "unrealized": {"ladder": unrealized or 0.0, "micro": 0.0},
+                    "totals": {"ladder": (self._realized + (unrealized or 0.0)), "micro": 0.0},
+                },
+                "phase": row.get("phase") or "SIM",
                 "ladder_prices": [],
                 "ladder_amounts_quote": [],
                 "ladder_next_idx": int(row.get("next_ladder_idx") or 0),
                 "ladder_total": int(row.get("next_ladder_idx") or 0),
                 "profit_reserve": {"pending_quote": 0.0, "holdings_qty": 0.0, "quote_spent": 0.0},
                 "bnb_reserve": {"pending_quote": 0.0, "holdings_qty": 0.0},
-                "fees_paid": {"pair": {}, "totals": {"quote": 0.0, "bnb": 0.0, "other": {}}},
+                "fees_paid": {
+                    "pair": {"quote": 0.0, "bnb": 0.0, "other": {}, "by_strategy": {}},
+                    "totals": {"quote": 0.0, "bnb": 0.0, "other": {}, "by_strategy": {}},
+                },
                 "next_buy_price": None,
                 "buy_the_dip": None,
                 "next_sell_price": None,
@@ -218,13 +226,27 @@ class SimulationRunner:
         with self._lock:
             pair = self._status.copy()
             logs = list(self._logs)
+        fees_paid = pair.get("fees_paid") if isinstance(pair, dict) else {}
+        fee_totals = (fees_paid or {}).get("totals") if isinstance(fees_paid, dict) else {}
+        pnl_breakdown = pair.get("pnl_breakdown") if isinstance(pair, dict) else None
         totals = {
             "realized_pnl": pair.get("realized_pnl_total") or 0.0,
             "unrealized_pnl": pair.get("unrealized_pnl") if pair else 0.0,
             "pnl_total": pair.get("pnl_total") if pair else 0.0,
             "profit_reserve": {"pending_quote": 0.0, "holdings_qty": 0.0, "quote_spent": 0.0},
             "bnb_reserve": {"pending_quote": 0.0, "holdings_qty": 0.0},
-            "fees_paid": {"quote": 0.0, "bnb": 0.0, "other": {}},
+            "fees_paid": {
+                "quote": float((fee_totals or {}).get("quote", 0.0)),
+                "bnb": float((fee_totals or {}).get("bnb", 0.0)),
+                "other": dict((fee_totals or {}).get("other", {})),
+                "by_strategy": dict((fee_totals or {}).get("by_strategy", {})),
+            },
+            "pnl_breakdown": pnl_breakdown
+            or {
+                "realized": {"ladder": pair.get("realized_pnl_total") or 0.0, "micro": 0.0},
+                "unrealized": {"ladder": pair.get("unrealized_pnl") or 0.0, "micro": 0.0},
+                "totals": {"ladder": pair.get("pnl_total") or 0.0, "micro": 0.0},
+            },
         }
         return {
             "status": "paused" if self._paused.is_set() else "running",

@@ -812,7 +812,6 @@ def main() -> None:
             effective_cost = cost * (executed_qty / qty)
             realized_pnl = proceeds - effective_cost
             update_realized_pnl(micro_delta=realized_pnl)
-
             ev["executed_qty"] = executed_qty
             ev["fill_price"] = fill_price
             ev["proceeds"] = proceeds
@@ -1380,19 +1379,19 @@ def main() -> None:
             kind="status",
             ts=latest["timestamp"],
         )
-            write_savepoint(
-                savepoint_dir,
-                pair_cfg.symbol,
-                state,
-                last_open_time=last_open_time,
-                event_log=event_log,
-                activity_history=activity_history,
-                realized_pnl_total=realized_pnl_total,
-                latest_price=latest["close"],
-                status=startup_status,
-                baseline_qty=baseline_qty,
-                baseline_cost=baseline_cost,
-                pnl_by_strategy=pnl_by_strategy,
+        write_savepoint(
+            savepoint_dir,
+            pair_cfg.symbol,
+            state,
+            last_open_time=last_open_time,
+            event_log=event_log,
+            activity_history=activity_history,
+            realized_pnl_total=realized_pnl_total,
+            latest_price=latest["close"],
+            status=startup_status,
+            baseline_qty=baseline_qty,
+            baseline_cost=baseline_cost,
+            pnl_by_strategy=pnl_by_strategy,
             )
 
         def process_manual_sell(ts: datetime) -> bool:

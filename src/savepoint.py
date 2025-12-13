@@ -205,6 +205,7 @@ def write_savepoint(
     status: Dict[str, Any],
     baseline_qty: float,
     baseline_cost: float,
+    pnl_by_strategy: Optional[Dict[str, float]] = None,
 ) -> None:
     _ensure_dir(directory)
     save_file = directory / f"{symbol.upper()}.json"
@@ -221,6 +222,7 @@ def write_savepoint(
         "status": status,
         "baseline_qty": baseline_qty,
         "baseline_cost": baseline_cost,
+        "pnl_by_strategy": pnl_by_strategy or {},
     }
     tmp_file = save_file.with_suffix(".tmp")
     with tmp_file.open("w", encoding="utf-8") as fh:
