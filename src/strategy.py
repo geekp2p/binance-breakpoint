@@ -840,6 +840,9 @@ class StrategyState:
                 exit_price = stop
                 reason = "STOP"
             if exit_price is not None:
+                breakeven_price = pos["cost"] / (qty * max(1 - self.fees_sell, 1e-9))
+                if exit_price < breakeven_price:
+                    exit_price = breakeven_price                
                 qty_to_sell = min(qty, self.Q)
                 if qty_to_sell <= max(self.micro.min_exit_qty, 0.0):
                     log_events.append(

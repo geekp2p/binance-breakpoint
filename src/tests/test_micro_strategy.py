@@ -141,6 +141,35 @@ def test_micro_stop_clamped_and_no_oversell():
     assert any(pos["qty"] > 0 for pos in state.micro_positions) or not state.micro_positions
 
 
+def test_micro_exit_price_never_below_breakeven():
+    state = make_state()
+    state.rebuild_ladder(100.0)
+    seed_micro_ready(state)
+
+    events = []
+    ts = pd.Timestamp("2025-01-01T00:00:00Z")
+    state._maybe_micro_buy(ts, h=100.3, l=99.7, log_events=events)
+
+    position = state.micro_positions[0]
+    breakeven = position["cost"] / position["qty"] / (1 - state.fees_sell)
+
+    # Force an unrealistically low stop to ensure it gets clamped
+    state.micro_positions[0]["stop"] = position["entry"] * 0.95
+
+    events.clear()
+    low_stop = state.micro_positions[0]["stop"]
+    state._check_micro_take_profit(
+        ts,
+        h=breakeven,
+        l=low_stop,
+        log_events=events,
+    )
+
+    exit_event = next(e for e in events if e["event"].startswith("MICRO_"))
+    assert exit_event["price"] >= breakeven
+    assert exit_event["pnl"] >= -1e-9
+
+
 def test_micro_stop_not_triggered_if_above_range():
     state = make_state()
     state.rebuild_ladder(100.0)
