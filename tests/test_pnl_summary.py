@@ -64,3 +64,25 @@ def test_render_summary_report_includes_net_after_quote_fees(tmp_path: Path) -> 
     assert "Realized: 10.00 | จากราคา: 5.00 | รวม: 15.00" in report
     assert "สุทธิหลังหักค่าธรรมเนียมใน quote" in report
     assert "Realized: 7.00 | จากราคา: 5.00 | รวม: 12.00" in report
+
+
+def test_render_summary_report_highlights_winners_and_losers(tmp_path: Path) -> None:
+    savepoints = tmp_path / "savepoints"
+    savepoints.mkdir()
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+
+    winners_payload = {"symbol": "WIN", "status": {"realized_pnl_total": 12, "unrealized_pnl": 3}}
+    losers_payload = {"symbol": "LOSE", "status": {"realized_pnl_total": -5, "unrealized_pnl": -7}}
+    neutral_payload = {"symbol": "FLAT", "status": {"realized_pnl_total": 1, "unrealized_pnl": 0}}
+
+    (savepoints / "win.json").write_text(json.dumps(winners_payload), encoding="utf-8")
+    (savepoints / "lose.json").write_text(json.dumps(losers_payload), encoding="utf-8")
+    (savepoints / "flat.json").write_text(json.dumps(neutral_payload), encoding="utf-8")
+
+    report = render_summary_report(savepoints, out_dir)
+
+    assert "ขาดทุนหนักที่สุด (ตาม Total)" in report
+    assert "LOSE: -12.00 (Realized -5.00 | จากราคา -7.00" in report
+    assert "กำไรสูงสุด (ตาม Total)" in report
+    assert "WIN: 15.00 (Realized 12.00 | จากราคา 3.00" in report

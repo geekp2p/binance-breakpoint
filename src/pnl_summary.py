@@ -251,6 +251,27 @@ def render_summary_report(savepoint_dir: Path, out_dir: Path) -> str:
     grand_total = realized_total + price_move_total
     fees_snapshot = load_fees_snapshot(savepoint_dir)
 
+    def format_top_rows(rows: Sequence[PnLRow], *, descending: bool) -> str:
+        if not rows:
+            return "(ไม่มีข้อมูล)"
+
+        sorted_rows = sorted(rows, key=lambda r: r.total, reverse=descending)
+        selected = sorted_rows[:3]
+        contribution_denominator = grand_total if grand_total != 0 else None
+
+        lines: List[str] = []
+        for row in selected:
+            contribution = ""
+            if contribution_denominator:
+                contribution_ratio = (row.total / contribution_denominator) * 100
+                contribution = f" | สัดส่วน {contribution_ratio:+.1f}%"
+            lines.append(
+                "  "
+                + f"{row.symbol}: {row.total:,.2f} (Realized {row.realized:,.2f} | จากราคา {row.price_move:,.2f}" 
+                + f"{contribution})"
+            )
+        return "\n".join(lines)
+
     sections = [
         "รวม PnL รายไฟล์",
         render_table(detail_rows, include_path=True),
@@ -260,6 +281,12 @@ def render_summary_report(savepoint_dir: Path, out_dir: Path) -> str:
         "",
         "รวมทั้งหมด (ก่อนหักค่าธรรมเนียม)",
         f"Realized: {realized_total:,.2f} | จากราคา: {price_move_total:,.2f} | รวม: {grand_total:,.2f}",
+        "",
+        "ขาดทุนหนักที่สุด (ตาม Total)",
+        format_top_rows(combined_rows, descending=False),
+        "",
+        "กำไรสูงสุด (ตาม Total)",
+        format_top_rows(combined_rows, descending=True),
     ]
     if fees_snapshot:
         quote_fee = fees_snapshot.get("quote", 0.0)
