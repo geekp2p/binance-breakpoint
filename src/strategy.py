@@ -823,8 +823,7 @@ class StrategyState:
                 self.micro_cooldown_until_bar = self.bar_index + max(1, int(self.micro.cooldown_bars))
                 if self.micro.loss_recovery_enabled:
                     if pnl <= 0:
-                        loss_ratio = abs(pnl) / max(cost_share, 1e-9)
-                        recovery = loss_ratio + self.micro.loss_recovery_markup_pct
+                        recovery = self.micro.loss_recovery_markup_pct
                         self.micro_loss_recovery_pct = min(
                             max(self.micro_loss_recovery_pct, recovery),
                             self.micro.loss_recovery_max_pct,
@@ -1010,6 +1009,19 @@ class StrategyState:
             trig = self.ladder_prices[self.ladder_next_idx]
             if l <= trig:
                 amt_q = self.ladder_amounts_quote[self.ladder_next_idx]
+                if amt_q <= 0:
+                    log_events.append({
+                        "ts": ts,
+                        "event": "BUY_SKIPPED",
+                        "reason": "ZERO_LADDER_QUOTE",
+                        "ladder_idx": self.ladder_next_idx + 1,
+                        "ladder_price": trig,
+                        "low": l,
+                        "remaining_quote": self._remaining_quote_allocation(),
+                        "phase": self.phase,
+                    })
+                    self.ladder_next_idx += 1
+                    continue                
                 if amt_q > 0:
                     q = (amt_q / trig)
                     prev_qty = self.Q
