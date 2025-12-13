@@ -1,3 +1,4 @@
+import pandas as pd
 import pytest
 
 from src.utils import compute_ladder_amounts, compute_ladder_prices, geometric_base_allocation
@@ -100,3 +101,77 @@ def test_rebuild_preserves_remaining_allocation_when_progressed():
     # Full rebuild (e.g., new round) should size for the full allocation again.
     state.rebuild_ladder(100.0, preserve_progress=False)
     assert sum(state.ladder_amounts_quote) == pytest.approx(state.b_alloc)
+
+
+def test_micro_buy_nudges_ladder_and_targets_profit():
+    buy_cfg = BuyLadderConf(d_buy=0.02, m_buy=1.0, n_steps=3)
+    micro_cfg = MicroOscillationConf(
+        enabled=True,
+        window=6,
+        max_band_pct=0.2,
+        min_swings=1,
+        min_swing_pct=0.0,
+        entry_band_pct=0.15,
+        take_profit_pct=0.01,
+        stop_break_pct=0.005,
+        order_pct_allocation=0.5,
+        cooldown_bars=0,
+    )
+    dummy = {"enabled": False}
+    state = StrategyState(
+        fees_buy=0.001,
+        fees_sell=0.001,
+        b_alloc=100.0,
+        buy=buy_cfg,
+        adaptive=AdaptiveLadderConf(enabled=False),
+        anchor=AnchorDriftConf(enabled=False),
+        trail=ProfitTrailConf(
+            p_min=0.02,
+            s1=0.01,
+            m_step=1.6,
+            tau=0.7,
+            p_lock_base=0.0,
+            p_lock_max=0.0,
+            tau_min=0.3,
+        ),
+        tmart=TimeMartingaleConf(W1_minutes=5, m_time=2.0, delta_lock=0.0, beta_tau=0.9),
+        tcaps=TimeCapsConf(T_idle_max_minutes=10, p_idle=0.0, T_total_cap_minutes=60, p_exit_min=0.0),
+        scalp=ScalpModeConf(**dummy),
+        micro=micro_cfg,
+        btd=BuyTheDipConf(**dummy),
+        sah=SellAtHeightConf(**dummy),
+        snapshot_every_bars=1,
+        use_maker=True,
+    )
+
+    state._set_initial_d_buy()
+    state.rebuild_ladder(100.0)
+    original_idx = state.ladder_next_idx
+
+    # Preload the micro window so the snapshot is ready and narrow enough.
+    state.micro_prices = [100.0, 99.0, 98.0, 97.0, 96.0, 95.0]
+    state.micro_swings = 3
+    state.bar_index = 10
+
+    log_events = []
+    state._maybe_micro_buy(
+        pd.Timestamp("2025-01-01T00:00:00Z"),
+        h=100.0,
+        l=95.0,
+        log_events=log_events,
+    )
+
+    assert state.micro_positions, "micro buy should open a position"
+    pos = state.micro_positions[0]
+
+    # Ladder progress should be nudged forward when the micro entry is below ladder marks.
+    assert state.ladder_next_idx > original_idx
+
+    # Micro take-profit should still aim above break-even.
+    breakeven = pos["cost"] / (pos["qty"] * max(1 - state.fees_sell, 1e-9))
+    min_profit_pct = max(
+        getattr(state.micro, "min_profit_pct", 0.0),
+        state.fees_buy + state.fees_sell,
+        0.0,
+    )
+    assert pos["target"] >= breakeven * (1 + min_profit_pct)

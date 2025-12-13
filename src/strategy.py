@@ -800,16 +800,6 @@ class StrategyState:
         self.micro_swings = 0
         self.micro_cooldown_until_bar = self.bar_index + max(1, int(self.micro.cooldown_bars))
         self.micro_last_exit_price = None
-        log_events.append({
-            "ts": ts,
-            "event": "MICRO_BUY",
-            "price": price,
-            "qty": qty,
-            "order_quote": order_quote,
-            "target": target,
-            "stop": stop,
-            "band_pct": snap["band_pct"],
-        })
 
         while self.ladder_next_idx < len(self.ladder_prices) and price <= self.ladder_prices[self.ladder_next_idx]:
             self.ladder_next_idx += 1
@@ -821,7 +811,17 @@ class StrategyState:
                     "ladder_idx": self.ladder_next_idx,
                     "ladder_price": self.ladder_prices[self.ladder_next_idx - 1],
                 }
-            )        
+            )
+        log_events.append({
+            "ts": ts,
+            "event": "MICRO_BUY",
+            "price": price,
+            "qty": qty,
+            "order_quote": order_quote,
+            "target": target,
+            "stop": stop,
+            "band_pct": snap["band_pct"],
+        })      
 
     def _check_micro_take_profit(self, ts, h, l, log_events: List[Dict[str, Any]]):
         if not self.micro_positions:
