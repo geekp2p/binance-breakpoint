@@ -145,8 +145,12 @@ class SimulationRunner:
                     notional_label,
                     pnl_label,
                 ]
+                kind = str(side).lower()
+                if kind not in {"buy", "sell"}:
+                    kind = "trade"
                 self._append_log(
                     " ".join(part for part in msg_parts if part),
+                    kind=kind,
                     ts=trade_ts.iloc[self._trade_ptr],
                     extra={
                         "side": side,
@@ -237,9 +241,16 @@ class SimulationRunner:
             realized = self._realized
 
         if logs:
-            pd.DataFrame(logs).to_csv(output, index=False)
+            df = pd.DataFrame(logs)
+            base_cols = ["ts", "kind", "symbol", "msg", "side", "qty", "price", "notional", "pnl", "status"]
+            for col in base_cols:
+                if col not in df.columns:
+                    df[col] = ""
+            extra_cols = [c for c in df.columns if c not in base_cols]
+            ordered_cols = base_cols + extra_cols
+            df.to_csv(output, index=False, columns=ordered_cols)
         else:
-            output.write("ts,msg,symbol,kind,side,qty,price,notional,pnl,status\n")
+            output.write("ts,kind,symbol,msg,side,qty,price,notional,pnl,status\n")
 
         summary_line = (
             f"\n# summary\n"

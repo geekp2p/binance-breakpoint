@@ -247,7 +247,9 @@
 
     .log-line { color: var(--text); }
     .log-line .sym { color: var(--accent); font-weight: 700; }
-    .log-line .kind { color: var(--muted); }
+    .log-line .kind { color: var(--muted); font-weight: 700; }
+    .log-line .pnl-pos { color: var(--success); font-weight: 700; }
+    .log-line .pnl-neg { color: var(--danger); font-weight: 700; }
 
     .phase {
       font-size: 0.88rem;
@@ -794,13 +796,34 @@
     function renderLogs(logs) {
       if (!logFeedEl || !logMetaEl) return;
       const items = Array.isArray(logs) ? logs.slice(-1000) : [];
-      logMetaEl.textContent = `${items.length} recent`;
+      logMetaEl.textContent = `${items.length} recent (latest 1000)`;
       const lines = items.map((entry) => {
         const ts = entry.ts ? new Date(entry.ts).toLocaleTimeString() : "";
         const sym = entry.symbol ? `[${entry.symbol}]` : "";
         const kind = entry.kind ? String(entry.kind).toUpperCase() : "";
+        const side = entry.side ? String(entry.side).toUpperCase() : "";
+        const qty = typeof entry.qty === "number" ? `qty=${fmtNumber(entry.qty, 6)}` : "";
+        const price = typeof entry.price === "number" ? `@ ${fmtNumber(entry.price)}` : "";
+        const notional = typeof entry.notional === "number" ? `notional=${fmtNumber(entry.notional, 4)}` : "";
+        const pnlVal = typeof entry.pnl === "number" ? entry.pnl : null;
+        const pnlCls = pnlVal === null ? "" : pnlVal >= 0 ? "pnl-pos" : "pnl-neg";
+        const pnlText = pnlVal === null ? "" : `pnl=${fmtNumber(pnlVal, 6)}`;
+        const pnlStatus = entry.status ? `(${entry.status})` : "";
+        const baseKind = side || kind;
+        const details = [qty, price, notional].filter(Boolean).join(" ");
         const msg = entry.msg ?? "";
-        return `<div class="log-line"><span class="kind">${escapeHtml(ts)}</span> <span class="sym">${escapeHtml(sym)}</span> ${escapeHtml(kind)} ${escapeHtml(msg)}</div>`;
+        const pnlChunk = pnlText
+          ? `<span class="${pnlCls}">${escapeHtml(pnlText)} ${escapeHtml(pnlStatus)}</span>`
+          : "";
+        return `
+          <div class="log-line">
+            <span class="kind">${escapeHtml(ts)}</span>
+            <span class="sym">${escapeHtml(sym)}</span>
+            ${escapeHtml(baseKind)}
+            ${escapeHtml(details)}
+            ${pnlChunk}
+            ${escapeHtml(msg)}
+          </div>`;
       });
       logFeedEl.innerHTML = lines.join("\n");
     }
