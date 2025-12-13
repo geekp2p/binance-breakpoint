@@ -9,7 +9,7 @@ import threading
 from collections import deque
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Dict, List, Optional, Mapping
 
@@ -665,6 +665,15 @@ def main() -> None:
         activity_persist_count = _sync_history(
             activity_history, activity_jsonl, activity_csv
         )
+        status_log_interval = timedelta(hours=1)
+        latest_ts = latest["timestamp"]
+        if isinstance(latest_ts, str):
+            try:
+                latest_ts = datetime.fromisoformat(latest_ts)
+            except ValueError:
+                latest_ts = datetime.now(timezone.utc)
+        next_status_log_time = latest_ts + status_log_interval
+        pending_status_reason: Optional[str] = None
 
         def persist_event_log_delta() -> None:
             nonlocal event_persist_count
@@ -673,7 +682,7 @@ def main() -> None:
             event_persist_count = len(event_log)
 
         def record_history(event: Dict[str, object]) -> None:
-            nonlocal activity_persist_count
+            nonlocal activity_persist_count, pending_status_reason
             copy = dict(event)
             activity_history.append(copy)
             if len(activity_history) > MAX_HISTORY_ENTRIES:
@@ -681,6 +690,9 @@ def main() -> None:
             delta = activity_history[activity_persist_count:]
             _persist_records(delta, activity_jsonl, activity_csv)
             activity_persist_count = len(activity_history)
+            event_name = str(copy.get("event") or "").strip()
+            if event_name:
+                pending_status_reason = event_name
 
         profit_allocator.process_pending(
             discount_symbol,
@@ -1153,8 +1165,15 @@ def main() -> None:
         last_pnl_compact = ""
         last_pnl_total = ""
 
-        def log_status(status: Dict[str, object]) -> None:
+        def log_status(
+            status: Dict[str, object],
+            *,
+            force: bool = False,
+            reason: Optional[str] = None,
+            now: Optional[datetime] = None,
+        ) -> None:
             nonlocal last_status_line, last_pnl_compact, last_pnl_total
+            nonlocal next_status_log_time, pending_status_reason
             parts = [
                 f"p={status['price']:.4f}",
                 f"ph={status['phase']}#{status['stage']}",
@@ -1258,9 +1277,27 @@ def main() -> None:
             except Exception:
                 logging.debug("Unable to format fee snapshot")
             status_line = f"ST {pair_cfg.symbol} | " + " | ".join(parts)
-            if status_line != last_status_line:
-                logging.info(status_line)
-                last_status_line = status_line
+
+            ts_val: datetime
+            raw_ts = now or status.get("timestamp")
+            if isinstance(raw_ts, datetime):
+                ts_val = raw_ts
+            elif isinstance(raw_ts, str):
+                try:
+                    ts_val = datetime.fromisoformat(raw_ts)
+                except ValueError:
+                    ts_val = datetime.now(timezone.utc)
+            else:
+                ts_val = datetime.now(timezone.utc)
+
+            should_emit = force or ts_val >= next_status_log_time
+            if not should_emit:
+                return
+
+            if reason:
+                logging.info("Status update (%s)", reason)
+            logging.info(status_line)
+            last_status_line = status_line
 
             def _format_pnl(val: Optional[float]) -> str:
                 return f"{val:.2f}" if val is not None else "-"
@@ -1295,6 +1332,10 @@ def main() -> None:
                 logging.info(total_line)
                 last_pnl_compact = compact_line
                 last_pnl_total = total_line
+
+            if should_emit:
+                next_status_log_time = ts_val + status_log_interval
+                pending_status_reason = None
 
         def _extract_executed_quote(response: Mapping[str, object]) -> float:
             fills = response.get("fills") or []
@@ -1381,7 +1422,7 @@ def main() -> None:
             control.add_log(" ".join(parts), symbol=pair_cfg.symbol, kind="event", ts=ts_val)
 
         startup_status = build_status_snapshot(latest["close"], latest["timestamp"])
-        log_status(startup_status)
+        log_status(startup_status, force=True, reason="startup", now=latest["timestamp"])
         last_status = serialise_status(startup_status)
         control.update_status(pair_symbol, last_status)
         control.add_log(
@@ -1982,7 +2023,12 @@ def main() -> None:
 
                 last_open_time = kline["open_time"]
                 status_snapshot = build_status_snapshot(kline["close"], ts)
-                log_status(status_snapshot)
+                log_status(
+                    status_snapshot,
+                    force=pending_status_reason is not None,
+                    reason=pending_status_reason,
+                    now=ts,
+                )
                 last_status = serialise_status(status_snapshot)
                 control.update_status(pair_symbol, last_status)
                 write_savepoint(
