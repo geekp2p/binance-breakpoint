@@ -68,13 +68,21 @@ class SimulationRunner:
         self._thread = threading.Thread(target=self._loop, daemon=True)
         self._thread.start()
 
-    def _append_log(self, msg: str, kind: str = "event", ts: Optional[pd.Timestamp] = None) -> None:
+    def _append_log(
+        self,
+        msg: str,
+        kind: str = "event",
+        ts: Optional[pd.Timestamp] = None,
+        extra: Optional[Dict[str, object]] = None,
+    ) -> None:
         entry = {
             "ts": (ts or pd.Timestamp.utcnow()).isoformat(),
             "msg": msg,
             "symbol": self.pair_cfg.symbol,
             "kind": kind,
         }
+        if extra:
+            entry.update(extra)
         with self._lock:
             self._logs.append(entry)
             if len(self._logs) > 1000:
@@ -122,7 +130,33 @@ class SimulationRunner:
                     self._realized += float(pnl)
                 side = tr.get("side", "?")
                 reason = tr.get("reason", "")
-                self._append_log(f"{side} {tr.get('qty', '')} @ {tr.get('price', '')} {reason}", ts=trade_ts.iloc[self._trade_ptr])
+                qty = float(tr.get("qty") or 0.0)
+                price_paid = float(tr.get("price") or 0.0)
+                notional = float(tr.get("notional") or 0.0)
+                pnl_value = float(pnl or 0.0)
+                status = "profit" if pnl_value > 0 else "loss" if pnl_value < 0 else "flat"
+                pnl_label = f"pnl={pnl_value:+.6f} ({status})"
+                notional_label = f"notional={notional:.4f}" if notional else ""
+                msg_parts = [
+                    side,
+                    f"qty={qty:.6f}",
+                    f"@ {price_paid:.6f}",
+                    reason,
+                    notional_label,
+                    pnl_label,
+                ]
+                self._append_log(
+                    " ".join(part for part in msg_parts if part),
+                    ts=trade_ts.iloc[self._trade_ptr],
+                    extra={
+                        "side": side,
+                        "qty": qty,
+                        "price": price_paid,
+                        "notional": notional,
+                        "pnl": pnl_value,
+                        "status": status,
+                    },
+                )
                 self._trade_ptr += 1
 
             snapshot = {
@@ -197,13 +231,22 @@ class SimulationRunner:
 
     def export_csv(self) -> str:
         output = io.StringIO()
-        realized = self._realized
-        unrealized = 0.0
         with self._lock:
+            logs = list(self._logs[-1000:])
             unrealized = float(self._status.get("unrealized_pnl") or 0.0) if self._status else 0.0
-        if not self._trades.empty:
-            self._trades.to_csv(output, index=False)
-        summary_line = f"total_realized,{realized}\ncurrent_unrealized,{unrealized}\npnl_total,{realized + unrealized}\n"
+            realized = self._realized
+
+        if logs:
+            pd.DataFrame(logs).to_csv(output, index=False)
+        else:
+            output.write("ts,msg,symbol,kind,side,qty,price,notional,pnl,status\n")
+
+        summary_line = (
+            f"\n# summary\n"
+            f"total_realized,{realized}\n"
+            f"current_unrealized,{unrealized}\n"
+            f"pnl_total,{realized + unrealized}\n"
+        )
         output.write(summary_line)
         return output.getvalue()
 
