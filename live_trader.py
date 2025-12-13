@@ -814,7 +814,15 @@ def main() -> None:
             )
             return adjusted_quote, False
 
-        def rollback_failed_buy(ev: Dict[str, object], ts: datetime, exc: Exception) -> None:
+        def rollback_failed_buy(
+            ev: Dict[str, object],
+            ts: datetime,
+            exc: Exception,
+            *,
+            log_level: int = logging.error,
+            event_label: str = "BUY_FAILED",
+            extra: Optional[Dict[str, object]] = None,
+        ) -> None:
             qty = float(ev.get("q") or ev.get("qty") or 0.0)
             quote_amt = float(ev.get("amt_q") or 0.0)
             if qty > 0:
@@ -825,21 +833,33 @@ def main() -> None:
                 state.ladder_next_idx -= 1
             if ev.get("event") == "BTD_ORDER" and state.btd_orders_done > 0:
                 state.btd_orders_done -= 1
-            logging.error(
+            logging.log(
+                log_level,
                 "Market buy failed; rolled back expected position (qty %.8f, quote %.8f): %s",
                 qty,
                 quote_amt,
                 exc,
             )
-            record_history(
-                {
-                    "ts": ts,
-                    "event": "BUY_FAILED",
-                    "reason": str(exc),
-                    "qty": qty,
-                    "quote": quote_amt,
-                }
-            )
+            payload = {
+                "ts": ts,
+                "event": event_label,
+                "reason": str(exc),
+                "qty": qty,
+                "quote": quote_amt,
+            }
+            if extra:
+                payload.update(extra)
+            record_history(payload)
+
+        def estimate_buy_notional(ev: Dict[str, object], fallback_price: float) -> float:
+            quote_amt = float(ev.get("amt_q") or 0.0)
+            if quote_amt > 0:
+                return quote_amt
+            qty = float(ev.get("q") or ev.get("qty") or 0.0)
+            price = float(ev.get("price") or ev.get("hint_price") or fallback_price or 0.0)
+            if qty > 0 and price > 0:
+                return qty * price
+            return 0.0
 
         def rollback_failed_sah(ev: Dict[str, object], ts: datetime, exc: Exception) -> None:
             qty = float(ev.get("qty") or ev.get("order_qty") or 0.0)
@@ -1482,6 +1502,49 @@ def main() -> None:
                         continue
                     if evt in {"BUY", "SCALP_BUY", "MICRO_BUY"}:
                         _normalise_buy_event(ev)
+                        est_price = float(ev.get("price") or ev.get("hint_price") or last_close_price or 0.0)
+                        est_qty = float(ev.get("q") or ev.get("qty") or 0.0)
+                        est_notional = estimate_buy_notional(ev, est_price)
+                        min_notional = None
+                        if client:
+                            try:
+                                min_notional = client.get_min_notional(pair_cfg.symbol)
+                            except Exception:
+                                logging.debug(
+                                    "Unable to fetch minNotional for %s", pair_cfg.symbol, exc_info=True
+                                )
+                        logging.debug(
+                            "Evaluating %s for %s: quote=%.4f qty=%.6f price_ref=%.4f min_notional=%s",
+                            evt,
+                            pair_cfg.symbol,
+                            float(ev.get("amt_q") or 0.0),
+                            est_qty,
+                            est_price,
+                            f"{min_notional:.4f}" if min_notional is not None else "n/a",
+                        )
+                        if min_notional is not None and est_notional < min_notional:
+                            logging.debug(
+                                "Skipping %s for %s: est notional %.4f below min %.4f",
+                                evt,
+                                pair_cfg.symbol,
+                                est_notional,
+                                min_notional,
+                            )
+                            rollback_failed_buy(
+                                ev,
+                                ts,
+                                RuntimeError("Below min notional"),
+                                log_level=logging.INFO,
+                                event_label="BUY_SKIPPED",
+                                extra={
+                                    "skip_reason": "BELOW_MIN_NOTIONAL",
+                                    "estimated_notional": est_notional,
+                                    "min_notional": min_notional,
+                                    "price_ref": est_price,
+                                    "source_event": evt,
+                                },
+                            )
+                            continue
                         quote_amt = float(ev.get("amt_q", 0.0))
                         logging.info(
                             "%s fill at %.4f for quote %.2f",
