@@ -258,10 +258,13 @@ def render_summary_report(savepoint_dir: Path, out_dir: Path) -> str:
         "สรุปตามคู่",
         render_table(combined_rows),
         "",
-        "รวมทั้งหมด",
+        "รวมทั้งหมด (ก่อนหักค่าธรรมเนียม)",
         f"Realized: {realized_total:,.2f} | จากราคา: {price_move_total:,.2f} | รวม: {grand_total:,.2f}",
     ]
     if fees_snapshot:
+        quote_fee = fees_snapshot.get("quote", 0.0)
+        net_realized = realized_total - quote_fee
+        net_total = grand_total - quote_fee
         other = fees_snapshot.get("other") or {}
         other_str = (
             " | อื่นๆ: " + ", ".join(f"{k}:{v:,.6f}" for k, v in sorted(other.items()))
@@ -270,6 +273,9 @@ def render_summary_report(savepoint_dir: Path, out_dir: Path) -> str:
         )
         sections.extend(
             [
+                "",
+                "สุทธิหลังหักค่าธรรมเนียมใน quote (ไม่แปลง BNB/อื่นๆ)",
+                f"Realized: {net_realized:,.2f} | จากราคา: {price_move_total:,.2f} | รวม: {net_total:,.2f}",
                 "",
                 "ค่าธรรมเนียมที่บันทึกไว้",
                 f"Quote: {fees_snapshot['quote']:,.6f} | BNB: {fees_snapshot['bnb']:,.6f}{other_str}",

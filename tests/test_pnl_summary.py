@@ -41,3 +41,26 @@ def test_render_summary_report_includes_fees(tmp_path: Path) -> None:
     assert "Quote: 12.500000" in report
     assert "BNB: 0.000321" in report
     assert "BNBUSDC:0.100000" in report
+
+
+def test_render_summary_report_includes_net_after_quote_fees(tmp_path: Path) -> None:
+    savepoints = tmp_path / "savepoints"
+    savepoints.mkdir()
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+
+    savepoint_payload = {
+        "symbol": "zecusdt",
+        "status": {"realized_pnl_total": 10, "unrealized_pnl": 5},
+    }
+    (savepoints / "ZECUSDT.json").write_text(json.dumps(savepoint_payload), encoding="utf-8")
+
+    fees_payload = {"fees_paid": {"totals": {"quote": 3.0, "bnb": 0.0}}}
+    (savepoints / "profit_accumulation.json").write_text(json.dumps(fees_payload), encoding="utf-8")
+
+    report = render_summary_report(savepoints, out_dir)
+
+    assert "รวมทั้งหมด (ก่อนหักค่าธรรมเนียม)" in report
+    assert "Realized: 10.00 | จากราคา: 5.00 | รวม: 15.00" in report
+    assert "สุทธิหลังหักค่าธรรมเนียมใน quote" in report
+    assert "Realized: 7.00 | จากราคา: 5.00 | รวม: 12.00" in report
