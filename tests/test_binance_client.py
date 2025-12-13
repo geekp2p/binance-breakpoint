@@ -49,3 +49,15 @@ def test_get_free_balance_fetches_signed_account(monkeypatch):
     assert client.get_free_balance("zec") == 1.234
     assert client.get_free_balance("BTC") == 0.0
     assert calls == [("GET", "/api/v3/account", True), ("GET", "/api/v3/account", True)]
+
+
+def test_get_free_balance_handles_empty_balances(monkeypatch):
+    client = BinanceClient("key", "secret")
+
+    def fake_request(method, path, *, params=None, signed=False):
+        assert signed is True
+        return {"balances": []}
+
+    monkeypatch.setattr(client, "_request", fake_request)
+
+    assert client.get_free_balance("usdt") == 0.0

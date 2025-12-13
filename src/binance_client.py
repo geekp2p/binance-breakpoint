@@ -102,7 +102,8 @@ class BinanceClient:
 
         account = self._request("GET", "/api/v3/account", signed=True)
         target = asset.upper()
-        for bal in account.get("balances", []):
+        balances = account.get("balances") or []
+        for bal in balances:
             if str(bal.get("asset", "")).upper() == target:
                 try:
                     return float(bal.get("free") or 0.0)
