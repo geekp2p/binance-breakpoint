@@ -94,6 +94,36 @@ def _load_json(path: Path) -> Optional[Dict[str, object]]:
         return None
 
 
+def _coerce_other_fees(other: object) -> Dict[str, float]:
+    if not isinstance(other, dict):
+        return {}
+    parsed: Dict[str, float] = {}
+    for asset, amount in other.items():
+        try:
+            parsed[str(asset)] = float(amount)
+        except (TypeError, ValueError):
+            continue
+    return parsed
+
+
+def load_fees_snapshot(savepoint_dir: Path, accumulation_filename: str = "profit_accumulation.json") -> Optional[Dict[str, object]]:
+    path = savepoint_dir / accumulation_filename
+    payload = _load_json(path)
+    if not isinstance(payload, dict):
+        return None
+    fees_paid = payload.get("fees_paid")
+    if not isinstance(fees_paid, dict):
+        return None
+    totals = fees_paid.get("totals")
+    if not isinstance(totals, dict):
+        return None
+    return {
+        "quote": _to_float(totals.get("quote")),
+        "bnb": _to_float(totals.get("bnb")),
+        "other": _coerce_other_fees(totals.get("other")),
+    }
+
+
 def load_savepoint_rows(directory: Path) -> List[PnLRow]:
     if not directory.exists():
         return []
@@ -219,6 +249,7 @@ def render_summary_report(savepoint_dir: Path, out_dir: Path) -> str:
     realized_total = sum(r.realized for r in detail_rows)
     price_move_total = sum(r.price_move for r in detail_rows)
     grand_total = realized_total + price_move_total
+    fees_snapshot = load_fees_snapshot(savepoint_dir)
 
     sections = [
         "รวม PnL รายไฟล์",
@@ -230,6 +261,20 @@ def render_summary_report(savepoint_dir: Path, out_dir: Path) -> str:
         "รวมทั้งหมด",
         f"Realized: {realized_total:,.2f} | จากราคา: {price_move_total:,.2f} | รวม: {grand_total:,.2f}",
     ]
+    if fees_snapshot:
+        other = fees_snapshot.get("other") or {}
+        other_str = (
+            " | อื่นๆ: " + ", ".join(f"{k}:{v:,.6f}" for k, v in sorted(other.items()))
+            if other
+            else ""
+        )
+        sections.extend(
+            [
+                "",
+                "ค่าธรรมเนียมที่บันทึกไว้",
+                f"Quote: {fees_snapshot['quote']:,.6f} | BNB: {fees_snapshot['bnb']:,.6f}{other_str}",
+            ]
+        )
     return "\n".join(sections)
 
 
@@ -237,6 +282,7 @@ __all__ = [
     "PnLRow",
     "aggregate_by_symbol",
     "load_backtest_rows",
+    "load_fees_snapshot",
     "load_savepoint_rows",
     "render_summary_report",
     "render_table",
