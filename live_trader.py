@@ -100,6 +100,13 @@ def reset_round(state, price: float, ts: datetime) -> None:
     state.p_lock_cur = state.trail.p_lock_base
     state.next_window_minutes = state.tmart.W1_minutes
     state.idle_checked = False
+    state.micro_positions = []
+    state.micro_prices = []
+    state.micro_swings = 0
+    state.micro_last_direction = None
+    state.micro_cooldown_until_bar = 0
+    state.micro_last_exit_price = None
+    state.micro_loss_recovery_pct = 0.0
     state.Q = 0.0
     state.C = 0.0
     state.btd_armed = False
@@ -254,7 +261,12 @@ def create_http_handler(control: ControlCenter):
                     "pnl_total": 0.0,
                     "profit_reserve": {"pending_quote": 0.0, "holdings_qty": 0.0, "quote_spent": 0.0},
                     "bnb_reserve": {"pending_quote": 0.0, "holdings_qty": 0.0},
-                    "fees_paid": {"quote": 0.0, "bnb": 0.0, "other": {}},
+                    "fees_paid": {"quote": 0.0, "bnb": 0.0, "other": {}, "by_strategy": {}},
+                    "pnl_breakdown": {
+                        "realized": {"ladder": 0.0, "micro": 0.0},
+                        "unrealized": {"ladder": 0.0, "micro": 0.0},
+                        "totals": {"ladder": 0.0, "micro": 0.0},
+                    },
                 }
 
                 for sym, raw in snapshot.items():
@@ -276,6 +288,31 @@ def create_http_handler(control: ControlCenter):
                         unrealized = _as_float(unrealized_raw, default=None)  # type: ignore[arg-type]
                     pnl_total = realized + (unrealized or 0.0)
 
+                    pnl_breakdown = raw.get("pnl_breakdown") or {
+                        "realized": {"ladder": realized, "micro": 0.0},
+                        "unrealized": {"ladder": unrealized or 0.0, "micro": 0.0},
+                    }
+                    realized_bd = pnl_breakdown.get("realized") or {}
+                    unrealized_bd = pnl_breakdown.get("unrealized") or {}
+                    totals_bd = pnl_breakdown.get("totals") or {
+                        "ladder": float(realized_bd.get("ladder", 0.0)) + float(unrealized_bd.get("ladder", 0.0)),
+                        "micro": float(realized_bd.get("micro", 0.0)) + float(unrealized_bd.get("micro", 0.0)),
+                    }
+                    pnl_breakdown = {
+                        "realized": {
+                            "ladder": float(realized_bd.get("ladder", 0.0)),
+                            "micro": float(realized_bd.get("micro", 0.0)),
+                        },
+                        "unrealized": {
+                            "ladder": float(unrealized_bd.get("ladder", 0.0)),
+                            "micro": float(unrealized_bd.get("micro", 0.0)),
+                        },
+                        "totals": {
+                            "ladder": float(totals_bd.get("ladder", 0.0)),
+                            "micro": float(totals_bd.get("micro", 0.0)),
+                        },
+                    }
+
                     pair_payload = {
                         **raw,
                         "realized_pnl": realized,
@@ -284,6 +321,7 @@ def create_http_handler(control: ControlCenter):
                         "profit_reserve": profit_reserve,
                         "bnb_reserve": bnb_reserve,
                         "fees_paid": fees_paid,
+                        "pnl_breakdown": pnl_breakdown,
                     }
                     pairs[sym] = pair_payload
 
@@ -295,11 +333,25 @@ def create_http_handler(control: ControlCenter):
                     totals["bnb_reserve"]["pending_quote"] += _as_float(bnb_reserve.get("pending_quote"))
                     totals["bnb_reserve"]["holdings_qty"] += _as_float(bnb_reserve.get("holdings_qty"))
 
-                    fee_totals = fees_paid.get("totals") if isinstance(fees_paid, dict) else {}
-                    totals["fees_paid"]["quote"] += _as_float((fee_totals or {}).get("quote"))
-                    totals["fees_paid"]["bnb"] += _as_float((fee_totals or {}).get("bnb"))
+                    pair_fee_bucket = fees_paid.get("pair") if isinstance(fees_paid, dict) else {}
+                    totals["fees_paid"]["quote"] += _as_float((pair_fee_bucket or {}).get("quote"))
+                    totals["fees_paid"]["bnb"] += _as_float((pair_fee_bucket or {}).get("bnb"))
                     totals_other = totals["fees_paid"].setdefault("other", {})
-                    _merge_other(totals_other, (fee_totals or {}).get("other", {}))
+                    _merge_other(totals_other, (pair_fee_bucket or {}).get("other", {}))
+                    strat_buckets = (pair_fee_bucket or {}).get("by_strategy", {})
+                    for name, bucket in strat_buckets.items():
+                        strat_total = totals["fees_paid"].setdefault(
+                            "by_strategy", {}
+                        ).setdefault(name, {"quote": 0.0, "bnb": 0.0, "other": {}})
+                        strat_total["quote"] += _as_float((bucket or {}).get("quote"))
+                        strat_total["bnb"] += _as_float((bucket or {}).get("bnb"))
+                        _merge_other(strat_total.setdefault("other", {}), (bucket or {}).get("other", {}))
+
+                    totals_bd = totals["pnl_breakdown"]
+                    for key in ("ladder", "micro"):
+                        totals_bd["realized"][key] += pnl_breakdown["realized"].get(key, 0.0)
+                        totals_bd["unrealized"][key] += pnl_breakdown["unrealized"].get(key, 0.0)
+                        totals_bd["totals"][key] = totals_bd["realized"][key] + totals_bd["unrealized"][key]
 
                 totals["pnl_total"] = totals["realized_pnl"] + totals["unrealized_pnl"]
                 log_limit_raw = (params.get("log_limit") or [None])[0]
@@ -440,6 +492,7 @@ def main() -> None:
         event_persist_count = 0
         activity_persist_count = 0
         realized_pnl_total = 0.0
+        pnl_by_strategy: Dict[str, float] = {"ladder": 0.0, "micro": 0.0}
         last_open_time = 0
 
         if savepoint_payload and savepoint_payload.get("state"):
@@ -451,6 +504,11 @@ def main() -> None:
                 activity_history = activity_history[-MAX_HISTORY_ENTRIES:]
             last_open_time = int(savepoint_payload.get("last_open_time") or 0)
             realized_pnl_total = float(savepoint_payload.get("realized_pnl_total") or 0.0)
+            saved_breakdown = savepoint_payload.get("pnl_by_strategy") or {}
+            pnl_by_strategy["ladder"] = float(saved_breakdown.get("ladder", pnl_by_strategy["ladder"]))
+            pnl_by_strategy["micro"] = float(saved_breakdown.get("micro", pnl_by_strategy["micro"]))
+            if realized_pnl_total == 0.0:
+                realized_pnl_total = pnl_by_strategy["ladder"] + pnl_by_strategy["micro"]
             logging.info(
                 "Loaded savepoint for %s from %s",
                 pair_cfg.symbol,
@@ -487,6 +545,14 @@ def main() -> None:
 
         baseline_qty = float(savepoint_payload.get("baseline_qty") or 0.0) if savepoint_payload else 0.0
         baseline_cost = float(savepoint_payload.get("baseline_cost") or 0.0) if savepoint_payload else 0.0
+
+        micro_guard_cfg = general.get("micro_guard", {})
+        micro_guard_enabled = bool(micro_guard_cfg.get("enabled", True))
+        micro_guard_cooldown_bars = int(
+            micro_guard_cfg.get("cooldown_bars", max(10, state.micro.cooldown_bars * 2))
+        )
+        micro_guard_drawdown = float(micro_guard_cfg.get("max_drawdown_quote", 0.0))
+        micro_guard_relative = float(micro_guard_cfg.get("relative_to_ladder", 0.5))
 
         history_jsonl = savepoint_dir / f"{pair_cfg.symbol.upper()}_event_log.jsonl"
         history_csv = savepoint_dir / f"{pair_cfg.symbol.upper()}_event_log.csv"
@@ -726,7 +792,7 @@ def main() -> None:
 
                 logging.info("Micro sell response: %s", json.dumps(response))
                 fills = response.get("fills") or []
-                profit_allocator.record_fees_from_fills(pair_symbol, fills, pair_cfg.quote)
+                profit_allocator.record_fees_from_fills(pair_symbol, fills, pair_cfg.quote, source="micro")
                 executed_qty = float(response.get("executedQty") or sell_qty)
                 fill_price = _weighted_fill_price(response) or target_price or last_close_price
             else:
@@ -745,7 +811,7 @@ def main() -> None:
             proceeds = executed_qty * fill_price * (1 - state.fees_sell)
             effective_cost = cost * (executed_qty / qty)
             realized_pnl = proceeds - effective_cost
-            realized_pnl_total += realized_pnl
+            update_realized_pnl(micro_delta=realized_pnl)
 
             ev["executed_qty"] = executed_qty
             ev["fill_price"] = fill_price
@@ -894,6 +960,62 @@ def main() -> None:
                 return 0.0, 0.0
             return qty, cost
 
+        def update_realized_pnl(*, ladder_delta: float = 0.0, micro_delta: float = 0.0) -> None:
+            nonlocal realized_pnl_total
+            pnl_by_strategy["ladder"] += ladder_delta
+            pnl_by_strategy["micro"] += micro_delta
+            realized_pnl_total = pnl_by_strategy["ladder"] + pnl_by_strategy["micro"]
+
+        def split_realized_pnl(realized_pnl: float, micro_cost: float, ladder_cost: float) -> tuple[float, float]:
+            total_cost = micro_cost + ladder_cost
+            micro_ratio = 0.0
+            if total_cost > 0:
+                micro_ratio = micro_cost / total_cost
+            elif state.Q > 0:
+                micro_ratio = min(max(state._micro_totals().get("qty", 0.0) / state.Q, 0.0), 1.0)
+            micro_share = realized_pnl * micro_ratio
+            ladder_share = realized_pnl - micro_share
+            return ladder_share, micro_share
+
+        def compute_pnl_breakdown(current_price: float) -> Dict[str, Dict[str, float]]:
+            micro_totals = state._micro_totals()
+            micro_qty = max(micro_totals.get("qty", 0.0), 0.0)
+            micro_cost = max(micro_totals.get("cost", 0.0), 0.0)
+            ladder_qty = max(state.Q - baseline_qty - micro_qty, 0.0)
+            ladder_cost = max(state.C - baseline_cost - micro_cost, 0.0)
+            ladder_unrealized = (
+                ladder_qty * current_price * (1 - state.fees_sell) - ladder_cost if ladder_qty > 0 else 0.0
+            )
+            micro_unrealized = (
+                micro_qty * current_price * (1 - state.fees_sell) - micro_cost if micro_qty > 0 else 0.0
+            )
+            realized_breakdown = {"ladder": pnl_by_strategy.get("ladder", 0.0), "micro": pnl_by_strategy.get("micro", 0.0)}
+            unrealized_breakdown = {"ladder": ladder_unrealized, "micro": micro_unrealized}
+            totals_breakdown = {
+                "ladder": realized_breakdown["ladder"] + ladder_unrealized,
+                "micro": realized_breakdown["micro"] + micro_unrealized,
+            }
+            return {
+                "realized": realized_breakdown,
+                "unrealized": unrealized_breakdown,
+                "totals": totals_breakdown,
+            }
+
+        def should_throttle_micro(current_price: float) -> tuple[bool, Dict[str, float]]:
+            if not micro_guard_enabled:
+                return False, {}
+            breakdown = compute_pnl_breakdown(current_price)
+            micro_total = breakdown["totals"].get("micro", 0.0)
+            ladder_total = breakdown["totals"].get("ladder", 0.0)
+            drawdown_limit = micro_guard_drawdown or pair_cfg.b_alloc * 0.01
+            ladder_buffer = abs(ladder_total) * micro_guard_relative
+            threshold = max(drawdown_limit, ladder_buffer)
+            return micro_total < -threshold, {
+                "micro_total": micro_total,
+                "ladder_total": ladder_total,
+                "threshold": threshold,
+            }
+
         def build_status_snapshot(current_price: float, ts: datetime) -> Dict[str, object]:
             net_qty, net_cost = net_position()
             p_be = None
@@ -906,6 +1028,7 @@ def main() -> None:
                 proceeds = current_price * net_qty * (1 - state.fees_sell)
                 unrealized_pnl = proceeds - net_cost
             realized_pnl = realized_pnl_total
+            pnl_breakdown = compute_pnl_breakdown(current_price)
             pnl_total = realized_pnl_total + (unrealized_pnl or 0.0)
             next_buy = (
                 state.ladder_prices[state.ladder_next_idx]
@@ -992,6 +1115,7 @@ def main() -> None:
                 "unrealized_pnl": unrealized_pnl,
                 "realized_pnl": realized_pnl,
                 "pnl_total": pnl_total,
+                "pnl_breakdown": pnl_breakdown,
                 "realized_pnl_total": realized_pnl_total,
                 "profit_reserve_coin": reserves.get("profit_reserve"),
                 "bnb_reserve_for_fees": reserves.get("bnb_reserve"),
@@ -1046,6 +1170,21 @@ def main() -> None:
                 parts.append(f"ns={status['next_sell_price']:.4f}")
             if status["unrealized_pnl"] is not None:
                 parts.append(f"u={status['unrealized_pnl']:.2f}")
+            pnl_breakdown = status.get("pnl_breakdown") or {}
+            realized_bd = pnl_breakdown.get("realized", {})
+            unrealized_bd = pnl_breakdown.get("unrealized", {})
+            parts.append(
+                "rL={ladder:.2f}/m={micro:.2f}".format(
+                    ladder=float(realized_bd.get("ladder", 0.0)),
+                    micro=float(realized_bd.get("micro", 0.0)),
+                )
+            )
+            parts.append(
+                "uL={ladder:.2f}/m={micro:.2f}".format(
+                    ladder=float(unrealized_bd.get("ladder", 0.0)),
+                    micro=float(unrealized_bd.get("micro", 0.0)),
+                )
+            )
             parts.append(f"rT={status['realized_pnl_total']:.2f}")
             scalp_enabled = bool(status.get("scalp_enabled"))
             parts.append(
@@ -1094,6 +1233,18 @@ def main() -> None:
                         dict(total_fees.get("other", {})),
                     )
                 )
+                strategy_fees = pair_fees.get("by_strategy", {}) if isinstance(pair_fees, dict) else {}
+                if strategy_fees:
+                    ladder_fee = strategy_fees.get("ladder", {})
+                    micro_fee = strategy_fees.get("micro", {})
+                    parts.append(
+                        "fees_split=L(q={:.4f},bnb={:.4f})/M(q={:.4f},bnb={:.4f})".format(
+                            float(ladder_fee.get("quote", 0.0)),
+                            float(ladder_fee.get("bnb", 0.0)),
+                            float(micro_fee.get("quote", 0.0)),
+                            float(micro_fee.get("bnb", 0.0)),
+                        )
+                    )
             except Exception:
                 logging.debug("Unable to format fee snapshot")
             status_line = f"ST {pair_cfg.symbol} | " + " | ".join(parts)
@@ -1229,19 +1380,20 @@ def main() -> None:
             kind="status",
             ts=latest["timestamp"],
         )
-        write_savepoint(
-            savepoint_dir,
-            pair_cfg.symbol,
-            state,
-            last_open_time=last_open_time,
-            event_log=event_log,
-            activity_history=activity_history,
-            realized_pnl_total=realized_pnl_total,
-            latest_price=latest["close"],
-            status=startup_status,
-            baseline_qty=baseline_qty,
-            baseline_cost=baseline_cost,
-        )
+            write_savepoint(
+                savepoint_dir,
+                pair_cfg.symbol,
+                state,
+                last_open_time=last_open_time,
+                event_log=event_log,
+                activity_history=activity_history,
+                realized_pnl_total=realized_pnl_total,
+                latest_price=latest["close"],
+                status=startup_status,
+                baseline_qty=baseline_qty,
+                baseline_cost=baseline_cost,
+                pnl_by_strategy=pnl_by_strategy,
+            )
 
         def process_manual_sell(ts: datetime) -> bool:
             nonlocal last_status, realized_pnl_total, last_open_time, event_log, event_ptr, event_persist_count
@@ -1308,9 +1460,15 @@ def main() -> None:
             cost_share = state.C * (executed_qty / qty) if qty > 0 else 0.0
             realized_pnl = net_proceeds - cost_share
 
+            micro_totals = state._micro_totals()
+            ladder_cost = max(state.C - micro_totals.get("cost", 0.0), 0.0)
+            ladder_pnl, micro_pnl = split_realized_pnl(
+                realized_pnl, micro_totals.get("cost", 0.0), ladder_cost
+            )
+
             state.Q = max(state.Q - executed_qty, 0.0)
             state.C = max(state.C - cost_share, 0.0)
-            realized_pnl_total += realized_pnl
+            update_realized_pnl(ladder_delta=ladder_pnl, micro_delta=micro_pnl)
 
             if realized_pnl > 0:
                 profit_allocator.allocate_profit(
@@ -1333,6 +1491,7 @@ def main() -> None:
                     "net_proceeds": net_proceeds,
                     "fee_rate": fee_rate,
                     "pnl": realized_pnl,
+                    "pnl_breakdown": {"ladder": ladder_pnl, "micro": micro_pnl},
                     "realized_pnl_total": realized_pnl_total,
                 }
             )
@@ -1362,6 +1521,7 @@ def main() -> None:
                 status=status_snapshot,
                 baseline_qty=baseline_qty,
                 baseline_cost=baseline_cost,
+                pnl_by_strategy=pnl_by_strategy,
             )
             return True
 
@@ -1473,9 +1633,15 @@ def main() -> None:
                         proceeds_net = proceeds_gross * (1 - state.fees_sell)
                         realized_pnl = proceeds_net - cost_share
 
+                        micro_totals = state._micro_totals()
+                        ladder_cost = max(state.C - micro_totals.get("cost", 0.0), 0.0)
+                        ladder_pnl, micro_pnl = split_realized_pnl(
+                            realized_pnl, micro_totals.get("cost", 0.0), ladder_cost
+                        )
+
                         state.Q = max(prev_qty - executed_qty, 0.0)
                         state.C = max(state.C - cost_share, 0.0)
-                        realized_pnl_total += realized_pnl
+                        update_realized_pnl(ladder_delta=ladder_pnl, micro_delta=micro_pnl)
 
                         sah_event = {
                             **ev,
@@ -1485,6 +1651,7 @@ def main() -> None:
                             "gross_proceeds": proceeds_gross,
                             "net_proceeds": proceeds_net,
                             "pnl": realized_pnl,
+                            "pnl_breakdown": {"ladder": ladder_pnl, "micro": micro_pnl},
                             "realized_pnl_total": realized_pnl_total,
                         }
 
@@ -1546,6 +1713,16 @@ def main() -> None:
                                 },
                             )
                             continue
+                        if evt == "MICRO_BUY":
+                            guard_triggered, guard_meta = should_throttle_micro(last_close_price)
+                            if guard_triggered:
+                                state.micro_cooldown_until_bar = max(
+                                    state.micro_cooldown_until_bar, state.bar_index + micro_guard_cooldown_bars
+                                )
+                                ev["skip_reason"] = "MICRO_PNL_GUARD"
+                                ev["guard"] = guard_meta
+                                record_history(ev)
+                                continue
                         quote_amt = float(ev.get("amt_q", 0.0))
                         logging.info(
                             "%s fill at %.4f for quote %.2f",
@@ -1597,7 +1774,10 @@ def main() -> None:
                             log_order_summary("BUY", response)
                             executed_qty = float(response.get("executedQty") or 0.0)
                             fills = response.get("fills") or []
-                            profit_allocator.record_fees_from_fills(pair_symbol, fills, pair_cfg.quote)
+                            fee_source = "micro" if evt == "MICRO_BUY" else "ladder"
+                            profit_allocator.record_fees_from_fills(
+                                pair_symbol, fills, pair_cfg.quote, source=fee_source
+                            )
                             commission_base = 0.0
                             if base_asset:
                                 for f in fills:
@@ -1744,7 +1924,12 @@ def main() -> None:
                         profit_allocator.record_fees_from_fills(pair_symbol, all_fills, pair_cfg.quote)
                     if qty > 0 and sell_qty != qty:
                         realized_pnl *= sell_qty / qty
-                    realized_pnl_total += realized_pnl
+                    micro_totals = state._micro_totals()
+                    ladder_cost = max(state.C - micro_totals.get("cost", 0.0), 0.0)
+                    ladder_pnl, micro_pnl = split_realized_pnl(
+                        realized_pnl, micro_totals.get("cost", 0.0), ladder_cost
+                    )
+                    update_realized_pnl(ladder_delta=ladder_pnl, micro_delta=micro_pnl)
                     if realized_pnl > 0:
                         profit_allocator.allocate_profit(
                             realized_pnl,
@@ -1763,6 +1948,7 @@ def main() -> None:
                             "sell_price": res.get("sell_price"),
                             "qty": qty,
                             "pnl": realized_pnl,
+                            "pnl_breakdown": {"ladder": ladder_pnl, "micro": micro_pnl},
                             "realized_pnl_total": realized_pnl_total,
                         }
                     )
@@ -1788,6 +1974,7 @@ def main() -> None:
                     status=status_snapshot,
                     baseline_qty=baseline_qty,
                     baseline_cost=baseline_cost,
+                    pnl_by_strategy=pnl_by_strategy,
                 )
 
                 sleep_time = max(args.poll_seconds, interval_ms / 1000.0 / 2)

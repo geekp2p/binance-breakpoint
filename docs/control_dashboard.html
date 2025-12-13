@@ -526,7 +526,7 @@
           <div class="ladder-badges">${items.join("")}</div>
         </details>`;
     }
-
+// ทบทวน function feesLabel ว่าถูกไหม
     function feesLabel(fees) {
       if (!fees) return "-";
       const quote = fmtNumber(fees.quote ?? 0, 4);
@@ -537,6 +537,26 @@
             .join(", ")}`
         : null;
       return other ? `${quote} q / ${bnb} bnb (${other})` : `${quote} q / ${bnb} bnb`;
+    }
+
+    function feesStrategyLabel(fees) {
+      if (!fees?.by_strategy) return "";
+      const ladder = fees.by_strategy.ladder || {};
+      const micro = fees.by_strategy.micro || {};
+      const ladderText = `L q:${fmtNumber(ladder.quote ?? 0, 4)} b:${fmtNumber(ladder.bnb ?? 0, 4)}`;
+      const microText = `M q:${fmtNumber(micro.quote ?? 0, 4)} b:${fmtNumber(micro.bnb ?? 0, 4)}`;
+      return `${ladderText} | ${microText}`;
+    }
+
+    function pnlBreakdownLabel(breakdown) {
+      if (!breakdown) return "";
+      const realized = breakdown.realized || {};
+      const unrealized = breakdown.unrealized || {};
+      const lR = fmtNumber(realized.ladder ?? 0, 2);
+      const mR = fmtNumber(realized.micro ?? 0, 2);
+      const lU = fmtNumber(unrealized.ladder ?? 0, 2);
+      const mU = fmtNumber(unrealized.micro ?? 0, 2);
+      return `L r ${lR} / u ${lU} | M r ${mR} / u ${mU}`;
     }
 
     function planRow(symbol, v) {
@@ -668,13 +688,24 @@
       const unrealized = typeof totals.unrealized_pnl === "number" ? totals.unrealized_pnl : sum(unrealizedList);
       const realized = typeof totals.realized_pnl === "number" ? totals.realized_pnl : sum(realizedList);
       const totalPnl = typeof totals.pnl_total === "number" ? totals.pnl_total : realized + unrealized;
+      const totalBreakdown = totals.pnl_breakdown || {
+        realized: { ladder: realized, micro: 0 },
+        unrealized: { ladder: unrealized, micro: 0 },
+        totals: { ladder: realized + unrealized, micro: 0 },
+      };
+      const ladderRealized = totalBreakdown.realized?.ladder ?? realized;
+      const microRealized = totalBreakdown.realized?.micro ?? 0;
+      const ladderUnrealized = totalBreakdown.unrealized?.ladder ?? 0;
+      const microUnrealized = totalBreakdown.unrealized?.micro ?? 0;
+      const totalBreakdownText = pnlBreakdownLabel(totalBreakdown);
 
       document.getElementById("unrealized").innerHTML = formatPnl(unrealized);
       document.getElementById("unrealizedCount").textContent = `${unrealizedList.length} pairs with position`;
       document.getElementById("realized").innerHTML = formatPnl(realized);
       document.getElementById("realizedCount").textContent = `${realizedList.length} pairs with realized PnL`;
       document.getElementById("totalPnl").innerHTML = formatPnl(totalPnl);
-      document.getElementById("pnlSummary").textContent = `r ${fmtNumber(realized, 2)} / u ${fmtNumber(unrealized, 2)}`;
+      document.getElementById("pnlSummary").textContent =
+        `r ${fmtNumber(realized, 2)} / u ${fmtNumber(unrealized, 2)} | L r ${fmtNumber(ladderRealized, 2)} u ${fmtNumber(ladderUnrealized, 2)} | M r ${fmtNumber(microRealized, 2)} u ${fmtNumber(microUnrealized, 2)}`;
       document.getElementById("pausedCount").textContent = paused;
       document.getElementById("totalCount").textContent = `${entries.length} pairs total`;
       document.getElementById("quoteSpent").textContent = `${fmtNumber(quoteSpent, 2)} USDT`;
@@ -689,7 +720,9 @@
 
       const feeTotals = totals.fees_paid || {};
       document.getElementById("feesPaid").textContent = feesLabel(feeTotals);
-      document.getElementById("feesMeta").textContent = `Quote ${fmtNumber(feeTotals.quote ?? 0, 4)} / BNB ${fmtNumber(feeTotals.bnb ?? 0, 4)}`;
+      const feeSplitText = feesStrategyLabel(feeTotals);
+      const feeMetaBase = `Quote ${fmtNumber(feeTotals.quote ?? 0, 4)} / BNB ${fmtNumber(feeTotals.bnb ?? 0, 4)}`;
+      document.getElementById("feesMeta").textContent = feeSplitText ? `${feeMetaBase} | ${feeSplitText}` : feeMetaBase;
 
       rowsEl.innerHTML = entries
         .map(([symbol, v]) => {
@@ -709,6 +742,17 @@
       const actionClass = v.paused ? "btn-secondary" : "btn-danger";
       const realizedPnl = v.realized_pnl_total ?? v.realized_pnl ?? 0;
       const cumulativePnl = typeof v.pnl_total === "number" ? v.pnl_total : realizedPnl + (v.unrealized_pnl || 0);
+      const breakdown = v.pnl_breakdown || {
+        realized: { ladder: realizedPnl, micro: 0 },
+        unrealized: { ladder: v.unrealized_pnl || 0, micro: 0 },
+        totals: { ladder: cumulativePnl, micro: 0 },
+      };
+      const ladderRealizedPair = breakdown.realized?.ladder ?? realizedPnl;
+      const microRealizedPair = breakdown.realized?.micro ?? 0;
+      const ladderUnrealizedPair = breakdown.unrealized?.ladder ?? (v.unrealized_pnl || 0);
+      const microUnrealizedPair = breakdown.unrealized?.micro ?? 0;
+      const ladderTotalPair = breakdown.totals?.ladder ?? ladderRealizedPair + ladderUnrealizedPair;
+      const microTotalPair = breakdown.totals?.micro ?? microRealizedPair + microUnrealizedPair;
       const exitLabel = (v.unrealized_pnl || 0) >= 0 ? "Take profit" : "Cut loss";
       const exitClass = (v.unrealized_pnl || 0) >= 0 ? "" : "btn-danger";
       const hasPosition = (v.qty || 0) > 0;
@@ -719,6 +763,7 @@
       const profitReserve = v.profit_reserve || v.profit_reserve_coin;
       const bnbReserve = v.bnb_reserve || v.bnb_reserve_for_fees;
       const pairFees = v.fees_paid?.pair ?? v.fees_paid?.totals ?? v.fees_paid;
+      const feeSplitPair = feesStrategyLabel({ by_strategy: v.fees_paid?.pair?.by_strategy || v.fees_paid?.by_strategy });
       const microStateRaw = v.micro_state || (v.micro_positions > 0 ? "waiting_sell" : "idle");
       const microState = microStateRaw.replace(/_/g, " ");
       const microPos = fmtNumber(v.micro_position_qty, 6);
@@ -740,12 +785,12 @@
               <td>${fmtNumber(v.price)}</td>
               <td>${fmtNumber(v.qty, 6)}<div class="muted">Spent ${fmtNumber(v.quote_spent, 6)} quote</div></td>
               <td>${v.avg_price ? fmtNumber(v.avg_price) : "-"}</td>
-              <td class="${pnlClass(v.unrealized_pnl)}">${unrealizedCell}</td>
-              <td class="${pnlClass(realizedPnl)}">${formatPnl(realizedPnl)}</td>
-               <td class="${pnlClass(cumulativePnl)}">${formatPnl(cumulativePnl)}</td>
+              <td class="${pnlClass(v.unrealized_pnl)}">${v.unrealized_pnl === null ? "-" : `${unrealizedCell}<div class=\"muted\">L ${fmtNumber(ladderUnrealizedPair, 2)} / M ${fmtNumber(microUnrealizedPair, 2)}</div>`}</td>
+              <td class="${pnlClass(realizedPnl)}">${formatPnl(realizedPnl)}<div class="muted">L ${fmtNumber(ladderRealizedPair, 2)} / M ${fmtNumber(microRealizedPair, 2)}</div></td>
+               <td class="${pnlClass(cumulativePnl)}">${formatPnl(cumulativePnl)}<div class="muted">L ${fmtNumber(ladderTotalPair, 2)} / M ${fmtNumber(microTotalPair, 2)}</div></td>
               <td>${reserveLabel(profitReserve, { compact: true })}</td>
               <td>${reserveLabel(bnbReserve, { compact: true })}</td>
-              <td>${feesLabel(pairFees)}</td>
+              <td>${feesLabel(pairFees)}${feeSplitPair ? `<div class="muted">${feeSplitPair}</div>` : ""}</td>
               <td><div class="muted">Buy: ${nextBuy}</div><div class="muted">BTD: ${buyTheDip}</div><div class="muted">Sell: ${nextSell}</div></td>
               <td>${microCell}</td>
               <td>${ladder}<div class="muted">Next q: ${ladderNextQuote}</div>${ladderBadgesHtml}</td>
@@ -769,10 +814,10 @@
         <td>-</td>
         <td class="${pnlClass(unrealized)}">${formatPnl(unrealized)}</td>
         <td class="${pnlClass(realized)}">${formatPnl(realized)}</td>
-        <td class="${pnlClass(totalPnl)}">${formatPnl(totalPnl)}</td>
+        <td class="${pnlClass(totalPnl)}">${formatPnl(totalPnl)}<div class="muted">${totalBreakdownText}</div></td>
         <td>${reserveLabel(totalReserves, { compact: true })}</td>
         <td>${reserveLabel(totalBnb, { compact: true })}</td>
-        <td>${feesLabel(feeTotals)}</td>
+        <td>${feesLabel(feeTotals)}${feeSplitText ? `<div class="muted">${feeSplitText}</div>` : ""}</td>
         <td colspan="6" class="muted">Aggregated totals</td>
       `;
     }
