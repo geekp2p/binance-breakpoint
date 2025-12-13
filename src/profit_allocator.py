@@ -106,6 +106,8 @@ class ProfitAllocator:
         quote = quote_asset.upper()
         if symbol.endswith(quote) and len(symbol) > len(quote):
             return symbol[: -len(quote)]
+        if symbol.startswith("BNB"):
+            return "BNB"
         return symbol
 
     def record_fees_from_fills(

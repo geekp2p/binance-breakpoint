@@ -345,6 +345,16 @@
         <div class="pill" id="pnlSummary">-</div>
       </div>
       <div class="card">
+        <h3>Strategy PnL mix</h3>
+        <div class="value" id="strategyPnl">-</div>
+        <div class="pill" id="strategyPnlMeta">Ladder / Micro</div>
+      </div>
+      <div class="card">
+        <h3>Strategy fees</h3>
+        <div class="value" id="strategyFees">-</div>
+        <div class="pill" id="strategyFeesMeta">Quote / BNB</div>
+      </div>
+      <div class="card">
         <h3>Paused pairs</h3>
         <div class="value" id="pausedCount">0</div>
         <div class="pill" id="totalCount">0 pairs total</div>
@@ -723,6 +733,23 @@
       const feeSplitText = feesStrategyLabel(feeTotals);
       const feeMetaBase = `Quote ${fmtNumber(feeTotals.quote ?? 0, 4)} / BNB ${fmtNumber(feeTotals.bnb ?? 0, 4)}`;
       document.getElementById("feesMeta").textContent = feeSplitText ? `${feeMetaBase} | ${feeSplitText}` : feeMetaBase;
+
+      const ladderTotalPnl = totalBreakdown.totals?.ladder ?? ladderRealized + ladderUnrealized;
+      const microTotalPnl = totalBreakdown.totals?.micro ?? microRealized + microUnrealized;
+      document.getElementById("strategyPnl").textContent = `L ${fmtNumber(ladderTotalPnl, 2)} / M ${fmtNumber(microTotalPnl, 2)}`;
+      document.getElementById("strategyPnlMeta").textContent =
+        `L r ${fmtNumber(ladderRealized, 2)} u ${fmtNumber(ladderUnrealized, 2)} | ` +
+        `M r ${fmtNumber(microRealized, 2)} u ${fmtNumber(microUnrealized, 2)}`;
+
+      const strategyFees = feeTotals.by_strategy || {};
+      const strategyFeeLabel = feesStrategyLabel({ by_strategy: strategyFees });
+      const ladderFees = strategyFees.ladder || {};
+      const microFees = strategyFees.micro || {};
+      const ladderFeeText = `L q:${fmtNumber(ladderFees.quote ?? 0, 4)} b:${fmtNumber(ladderFees.bnb ?? 0, 4)}`;
+      const microFeeText = `M q:${fmtNumber(microFees.quote ?? 0, 4)} b:${fmtNumber(microFees.bnb ?? 0, 4)}`;
+      document.getElementById("strategyFees").textContent = strategyFeeLabel || `${ladderFeeText} | ${microFeeText}`;
+      const strategyFeeMeta = `Tot q ${fmtNumber(feeTotals.quote ?? 0, 4)} / bnb ${fmtNumber(feeTotals.bnb ?? 0, 4)}`;
+      document.getElementById("strategyFeesMeta").textContent = strategyFeeLabel ? `${strategyFeeMeta} | ${strategyFeeLabel}` : strategyFeeMeta;
 
       rowsEl.innerHTML = entries
         .map(([symbol, v]) => {

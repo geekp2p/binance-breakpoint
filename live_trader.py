@@ -353,6 +353,11 @@ def create_http_handler(control: ControlCenter):
                         totals_bd["unrealized"][key] += pnl_breakdown["unrealized"].get(key, 0.0)
                         totals_bd["totals"][key] = totals_bd["realized"][key] + totals_bd["unrealized"][key]
 
+                for name in ("ladder", "micro"):
+                    totals["fees_paid"].setdefault("by_strategy", {}).setdefault(
+                        name, {"quote": 0.0, "bnb": 0.0, "other": {}}
+                    )
+
                 totals["pnl_total"] = totals["realized_pnl"] + totals["unrealized_pnl"]
                 log_limit_raw = (params.get("log_limit") or [None])[0]
                 log_limit = 1000
@@ -1169,9 +1174,10 @@ def main() -> None:
                 parts.append(f"ns={status['next_sell_price']:.4f}")
             if status["unrealized_pnl"] is not None:
                 parts.append(f"u={status['unrealized_pnl']:.2f}")
-            pnl_breakdown = status.get("pnl_breakdown") or {}
+             pnl_breakdown = status.get("pnl_breakdown") or {}
             realized_bd = pnl_breakdown.get("realized", {})
             unrealized_bd = pnl_breakdown.get("unrealized", {})
+            totals_bd = pnl_breakdown.get("totals", {})
             parts.append(
                 "rL={ladder:.2f}/m={micro:.2f}".format(
                     ladder=float(realized_bd.get("ladder", 0.0)),
@@ -1182,6 +1188,12 @@ def main() -> None:
                 "uL={ladder:.2f}/m={micro:.2f}".format(
                     ladder=float(unrealized_bd.get("ladder", 0.0)),
                     micro=float(unrealized_bd.get("micro", 0.0)),
+                )
+            )
+            parts.append(
+                "tL={ladder:.2f}/m={micro:.2f}".format(
+                    ladder=float(totals_bd.get("ladder", 0.0)),
+                    micro=float(totals_bd.get("micro", 0.0)),
                 )
             )
             parts.append(f"rT={status['realized_pnl_total']:.2f}")
@@ -1233,17 +1245,16 @@ def main() -> None:
                     )
                 )
                 strategy_fees = pair_fees.get("by_strategy", {}) if isinstance(pair_fees, dict) else {}
-                if strategy_fees:
-                    ladder_fee = strategy_fees.get("ladder", {})
-                    micro_fee = strategy_fees.get("micro", {})
-                    parts.append(
-                        "fees_split=L(q={:.4f},bnb={:.4f})/M(q={:.4f},bnb={:.4f})".format(
-                            float(ladder_fee.get("quote", 0.0)),
-                            float(ladder_fee.get("bnb", 0.0)),
-                            float(micro_fee.get("quote", 0.0)),
-                            float(micro_fee.get("bnb", 0.0)),
-                        )
+                ladder_fee = strategy_fees.get("ladder", {})
+                micro_fee = strategy_fees.get("micro", {})
+                parts.append(
+                    "fees_split=L(q={:.4f},bnb={:.4f})/M(q={:.4f},bnb={:.4f})".format(
+                        float(ladder_fee.get("quote", 0.0)),
+                        float(ladder_fee.get("bnb", 0.0)),
+                        float(micro_fee.get("quote", 0.0)),
+                        float(micro_fee.get("bnb", 0.0)),
                     )
+                )
             except Exception:
                 logging.debug("Unable to format fee snapshot")
             status_line = f"ST {pair_cfg.symbol} | " + " | ".join(parts)
@@ -1715,12 +1726,25 @@ def main() -> None:
                         if evt == "MICRO_BUY":
                             guard_triggered, guard_meta = should_throttle_micro(last_close_price)
                             if guard_triggered:
+                                cooldown = micro_guard_cooldown_bars * 2
                                 state.micro_cooldown_until_bar = max(
-                                    state.micro_cooldown_until_bar, state.bar_index + micro_guard_cooldown_bars
+                                    state.micro_cooldown_until_bar, state.bar_index + cooldown
                                 )
                                 ev["skip_reason"] = "MICRO_PNL_GUARD"
                                 ev["guard"] = guard_meta
                                 record_history(ev)
+                                control.add_log(
+                                    "Micro buy throttled: total={micro_total:.2f} ladder={ladder_total:.2f} "
+                                    "threshold={threshold:.2f} cooldown_bars={cooldown}".format(
+                                        micro_total=float(guard_meta.get("micro_total", 0.0)),
+                                        ladder_total=float(guard_meta.get("ladder_total", 0.0)),
+                                        threshold=float(guard_meta.get("threshold", 0.0)),
+                                        cooldown=cooldown,
+                                    ),
+                                    symbol=pair_cfg.symbol,
+                                    kind="guard",
+                                    ts=ts,
+                                )
                                 continue
                         quote_amt = float(ev.get("amt_q", 0.0))
                         logging.info(
