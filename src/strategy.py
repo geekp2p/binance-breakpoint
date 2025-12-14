@@ -901,6 +901,24 @@ class StrategyState:
             return
         remaining_positions: List[Dict[str, float]] = []
         for pos in self.micro_positions:
+
+            if pos.get("skip_until_bar", -1) > self.bar_index:
+                remaining_positions.append(pos)
+                continue
+            if self.Q <= 0:
+                log_events.append(
+                    {
+                        "ts": ts,
+                        "event": "MICRO_EXIT_PRUNED",
+                        "reason": "NO_INVENTORY",
+                        "qty": pos.get("qty", 0.0),
+                        "price": pos.get("entry"),
+                    }
+                )
+                self.micro_last_exit_price = pos.get("entry", self.micro_last_exit_price)
+                self.micro_cooldown_until_bar = self.bar_index + max(1, int(self.micro.cooldown_bars))
+                continue
+
             target = pos["target"]
             stop = pos["stop"]
             qty = pos["qty"]
@@ -921,32 +939,71 @@ class StrategyState:
                     exit_price = breakeven_price                
                 qty_to_sell = min(qty, self.Q)
                 if qty_to_sell <= max(self.micro.min_exit_qty, 0.0):
+
+                    if qty_to_sell <= 0 and self.Q <= 0:
+                        # Stale position with no inventory left: prune to avoid ghost state
+                        log_events.append(
+                            {
+                                "ts": ts,
+                                "event": "MICRO_EXIT_PRUNED",
+                                "reason": "NO_QTY",
+                                "qty": qty,
+                                "price": exit_price,
+                            }
+                        )
+                        self.micro_last_exit_price = exit_price
+                        self.micro_cooldown_until_bar = self.bar_index + max(1, int(self.micro.cooldown_bars))
+                        self._adjust_micro_tp_markup(0.0, hold_bars=hold_bars, reason=reason)
+                        continue
+
+                    # There is still some inventory, but it's too small to exit: keep tracking
+                    pos["skip_until_bar"] = self.bar_index + max(1, int(self.micro.cooldown_bars))
+                    remaining_positions.append(pos)
+
                     log_events.append(
                         {
                             "ts": ts,
-                            "event": "MICRO_EXIT_PRUNED",
-                            "reason": "NO_QTY" if qty_to_sell <= 0 else "TINY_QTY",
-                            "qty": qty,
+                            "event": "MICRO_EXIT_SKIPPED",
+                            "reason": "TINY_QTY",
+                            "qty": qty_to_sell,
                             "price": exit_price,
                         }
                     )
-                    self.micro_last_exit_price = exit_price
+                    # self.micro_last_exit_price = exit_price
                     self.micro_cooldown_until_bar = self.bar_index + max(1, int(self.micro.cooldown_bars))
                     self._adjust_micro_tp_markup(0.0, hold_bars=hold_bars, reason=reason)
                     continue
 
                 notional = qty_to_sell * exit_price
                 if notional <= max(self.micro.min_exit_notional, 0.0):
+
+                    if qty_to_sell <= 0 and self.Q <= 0:
+                        log_events.append(
+                            {
+                                "ts": ts,
+                                "event": "MICRO_EXIT_PRUNED",
+                                "reason": "TINY_REMAINDER",
+                                "qty": qty_to_sell,
+                                "price": exit_price,
+                            }
+                        )
+                        self.micro_last_exit_price = exit_price
+                        self.micro_cooldown_until_bar = self.bar_index + max(1, int(self.micro.cooldown_bars))
+                        continue
+
+                    pos["skip_until_bar"] = self.bar_index + max(1, int(self.micro.cooldown_bars))
+                    remaining_positions.append(pos)
+
                     log_events.append(
                         {
                             "ts": ts,
-                            "event": "MICRO_EXIT_PRUNED",
+                            "event": "MICRO_EXIT_SKIPPED",
                             "reason": "TINY_REMAINDER",
                             "qty": qty_to_sell,
                             "price": exit_price,
                         }
                     )
-                    self.micro_last_exit_price = exit_price
+                    # self.micro_last_exit_price = exit_price
                     self.micro_cooldown_until_bar = self.bar_index + max(1, int(self.micro.cooldown_bars))
                     continue
 

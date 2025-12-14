@@ -195,6 +195,28 @@ def test_micro_stop_not_triggered_if_above_range():
     assert not any(e["event"].startswith("MICRO_") for e in events)
 
 
+def test_micro_position_pruned_when_inventory_is_gone():
+    state = make_state()
+    state.rebuild_ladder(100.0)
+    seed_micro_ready(state)
+
+    events: List[Dict[str, Any]] = []
+    ts = pd.Timestamp("2025-01-01T00:00:00Z")
+    state._maybe_micro_buy(ts, h=100.3, l=99.7, log_events=events)
+
+    # Simulate the inventory being cleared elsewhere without hitting stop/TP
+    state.Q = 0.0
+    state.C = 0.0
+
+    events.clear()
+    state._check_micro_take_profit(ts, h=100.0, l=100.0, log_events=events)
+
+    assert not state.micro_positions, "ghost position should be pruned when no inventory remains"
+    prune_event = next(e for e in events if e["event"] == "MICRO_EXIT_PRUNED")
+    assert prune_event["reason"] == "NO_INVENTORY"
+    assert state.micro_cooldown_until_bar > state.bar_index
+
+
 def test_micro_loss_recovery_boosts_next_take_profit():
     state = make_state()
     state.micro.loss_recovery_markup_pct = 0.002
@@ -358,9 +380,9 @@ def test_micro_prunes_when_qty_guard_hits():
     events.clear()
     state._check_micro_take_profit(ts, h=position["stop"], l=position["stop"], log_events=events)
 
-    assert not state.micro_positions
-    pruned = next(e for e in events if e["event"] == "MICRO_EXIT_PRUNED")
-    assert pruned["reason"] == "TINY_QTY"
+    assert state.micro_positions, "position should stay tracked when qty is tiny but non-zero"
+    skipped = next(e for e in events if e["event"] == "MICRO_EXIT_SKIPPED")
+    assert skipped["reason"] == "TINY_QTY"
 
     # A second check should no longer emit new micro stop/exit events
     events.clear()
