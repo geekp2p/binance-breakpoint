@@ -406,3 +406,32 @@ def test_micro_adaptive_tp_markup_increases_after_fast_loss():
     new_buy = next(e for e in events if e["event"] == "MICRO_BUY")
     min_expected_tp = state.micro.take_profit_pct + state.micro_loss_recovery_pct + state.micro_tp_markup_pct
     assert new_buy["target"] >= new_buy["price"] * (1 + min_expected_tp)
+
+
+def test_micro_adaptive_tp_markup_scales_with_fast_wins():
+    state = make_state()
+    state.micro.take_profit_pct = 0.004
+    state.micro.stop_break_pct = 0.001
+    state.micro.tp_fast_trade_bars = 4
+    state.micro.tp_markup_step = 0.001
+    state.micro.tp_markup_step_fast_win = 0.0006
+    state.micro.tp_markup_max = 0.01
+    state.rebuild_ladder(100.0)
+    seed_micro_ready(state)
+
+    events: List[Dict[str, Any]] = []
+    ts = pd.Timestamp("2025-01-01T00:00:00Z")
+    state._maybe_micro_buy(ts, h=100.3, l=99.7, log_events=events)
+    position = state.micro_positions[0]
+
+    events.clear()
+    state.bar_index = position["entry_bar"] + 1
+    state._check_micro_take_profit(ts, h=position["target"], l=position["target"], log_events=events)
+
+    fast_trade_ratio = max(state.micro.tp_fast_trade_bars - 1, 0) / max(state.micro.tp_fast_trade_bars, 1)
+    expected_markup = (
+        state.micro.tp_markup_step
+        + state.micro.tp_markup_step_fast_win
+        + state.micro.tp_markup_step * fast_trade_ratio
+    )
+    assert state.micro_tp_markup_pct >= expected_markup

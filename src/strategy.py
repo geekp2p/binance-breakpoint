@@ -703,13 +703,34 @@ class StrategyState:
             "ready": ready,
         }
     
-    def _adjust_micro_tp_markup(self, pnl: float, hold_bars: Optional[int] = None, reason: Optional[str] = None):
+    def _adjust_micro_tp_markup(
+        self,
+        pnl: float,
+        hold_bars: Optional[int] = None,
+        reason: Optional[str] = None,
+        cost: Optional[float] = None,
+    ):
         if not getattr(self.micro, "tp_adapt_enabled", False):
             return
 
         fast_exit = False
+        freq_bonus = 0.0
         if hold_bars is not None:
-            fast_exit = hold_bars <= max(1, int(getattr(self.micro, "tp_fast_trade_bars", 0)))
+            fast_trade_bars = max(1, int(getattr(self.micro, "tp_fast_trade_bars", 0)))
+            fast_exit = hold_bars <= fast_trade_bars
+            if fast_exit:
+                freq_bonus = getattr(self.micro, "tp_markup_step", 0.0) * max(
+                    fast_trade_bars - hold_bars, 0
+                ) / max(fast_trade_bars, 1)
+
+        pnl_pct = None
+        if cost is not None and cost > 0:
+            pnl_pct = pnl / cost
+        min_profit_target = max(
+            getattr(self.micro, "min_profit_pct", 0.0),
+            getattr(self.micro, "take_profit_pct", 0.0),
+        )
+        inefficient_profit = pnl > 0 and pnl_pct is not None and pnl_pct < min_profit_target
 
         step = 0.0
         if pnl <= 0:
@@ -717,9 +738,20 @@ class StrategyState:
             if pnl < 0 or (reason == "STOP"):
                 step += getattr(self.micro, "tp_markup_step_loss", 0.0)
             if fast_exit:
-                step += getattr(self.micro, "tp_markup_step_fast_loss", getattr(self.micro, "tp_markup_step_fast_win", 0.0))
+                step += getattr(
+                    self.micro,
+                    "tp_markup_step_fast_loss",
+                    getattr(self.micro, "tp_markup_step_fast_win", 0.0),
+                )
+                step += freq_bonus
+        elif inefficient_profit:
+            step += getattr(self.micro, "tp_markup_step", 0.0)
+            step += getattr(self.micro, "tp_markup_step_loss", 0.0)
+            step += freq_bonus
         elif fast_exit:
+            step += getattr(self.micro, "tp_markup_step", 0.0)
             step += getattr(self.micro, "tp_markup_step_fast_win", 0.0)
+            step += freq_bonus
 
         if step <= 0:
             return
@@ -938,7 +970,9 @@ class StrategyState:
                         )
                     else:
                         self.micro_loss_recovery_pct = 0.0
-                self._adjust_micro_tp_markup(pnl, hold_bars=hold_bars, reason=reason)     
+                self._adjust_micro_tp_markup(
+                    pnl, hold_bars=hold_bars, reason=reason, cost=cost_share
+                )   
                 log_events.append({
                     "ts": ts,
                     "event": f"MICRO_{reason}",
