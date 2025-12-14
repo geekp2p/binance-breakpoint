@@ -100,6 +100,13 @@ class MicroOscillationConf:
     take_profit_pct: float = 0.0025
     stop_break_pct: float = 0.005
     min_profit_pct: float = 0.0015
+    tp_adapt_enabled: bool = True
+    tp_fast_trade_bars: int = 20
+    tp_markup_step: float = 0.001
+    tp_markup_step_loss: float = 0.002
+    tp_markup_step_fast_win: float = 0.0005
+    tp_markup_step_fast_loss: float = 0.001
+    tp_markup_max: float = 0.03    
     volatility_stop_mult: float = 0.9
     volatility_take_profit_mult: float = 0.6
     volatility_reentry_mult: float = 0.8
@@ -220,6 +227,7 @@ class StrategyState:
     micro_positions: List[Dict[str, float]] = field(default_factory=list)
     micro_last_exit_price: Optional[float] = None
     micro_loss_recovery_pct: float = 0.0
+    micro_tp_markup_pct: float = 0.0
 
     def _remaining_quote_allocation(self) -> float:
         effective_alloc = min(self.b_alloc, self.buy.max_total_quote) if self.buy.max_total_quote > 0 else self.b_alloc
@@ -694,6 +702,33 @@ class StrategyState:
             "band_pct": band_pct,
             "ready": ready,
         }
+    
+    def _adjust_micro_tp_markup(self, pnl: float, hold_bars: Optional[int] = None, reason: Optional[str] = None):
+        if not getattr(self.micro, "tp_adapt_enabled", False):
+            return
+
+        fast_exit = False
+        if hold_bars is not None:
+            fast_exit = hold_bars <= max(1, int(getattr(self.micro, "tp_fast_trade_bars", 0)))
+
+        step = 0.0
+        if pnl <= 0:
+            step += getattr(self.micro, "tp_markup_step", 0.0)
+            if pnl < 0 or (reason == "STOP"):
+                step += getattr(self.micro, "tp_markup_step_loss", 0.0)
+            if fast_exit:
+                step += getattr(self.micro, "tp_markup_step_fast_loss", getattr(self.micro, "tp_markup_step_fast_win", 0.0))
+        elif fast_exit:
+            step += getattr(self.micro, "tp_markup_step_fast_win", 0.0)
+
+        if step <= 0:
+            return
+
+        cap = getattr(self.micro, "tp_markup_max", 0.0)
+        if cap > 0:
+            self.micro_tp_markup_pct = min(self.micro_tp_markup_pct + step, cap)
+        else:
+            self.micro_tp_markup_pct += step    
 
     def _maybe_micro_buy(self, ts, h, l, log_events: List[Dict[str, Any]]):
         if not self.micro.enabled or self.bar_index < self.micro_cooldown_until_bar:
@@ -779,6 +814,7 @@ class StrategyState:
         tp_pct = tp_pct
         if self.micro.loss_recovery_enabled:
             tp_pct = min(tp_pct + self.micro_loss_recovery_pct, self.micro.loss_recovery_max_pct)
+        tp_pct = tp_pct + min(self.micro_tp_markup_pct, getattr(self.micro, "tp_markup_max", float("inf")))            
         break_even_price = cost / qty / max(1 - self.fees_sell, 1e-9)
         target = price * (1 + tp_pct)
         min_profit_pct = max(
@@ -796,6 +832,7 @@ class StrategyState:
             "cost": cost,
             "target": target,
             "stop": stop,
+            "entry_bar": self.bar_index,    
         })
         self.micro_swings = 0
         self.micro_cooldown_until_bar = self.bar_index + max(1, int(self.micro.cooldown_bars))
@@ -840,6 +877,9 @@ class StrategyState:
                 exit_price = stop
                 reason = "STOP"
             if exit_price is not None:
+                hold_bars = None
+                if "entry_bar" in pos:
+                    hold_bars = max(self.bar_index - int(pos["entry_bar"]), 0)                
                 breakeven_price = pos["cost"] / (qty * max(1 - self.fees_sell, 1e-9))
                 if exit_price < breakeven_price:
                     exit_price = breakeven_price                
@@ -856,6 +896,7 @@ class StrategyState:
                     )
                     self.micro_last_exit_price = exit_price
                     self.micro_cooldown_until_bar = self.bar_index + max(1, int(self.micro.cooldown_bars))
+                    self._adjust_micro_tp_markup(0.0, hold_bars=hold_bars, reason=reason)
                     continue
 
                 notional = qty_to_sell * exit_price
@@ -896,7 +937,8 @@ class StrategyState:
                             self.micro.loss_recovery_max_pct,
                         )
                     else:
-                        self.micro_loss_recovery_pct = 0.0         
+                        self.micro_loss_recovery_pct = 0.0
+                self._adjust_micro_tp_markup(pnl, hold_bars=hold_bars, reason=reason)     
                 log_events.append({
                     "ts": ts,
                     "event": f"MICRO_{reason}",

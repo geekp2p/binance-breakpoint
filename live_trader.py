@@ -692,7 +692,30 @@ def main() -> None:
             activity_persist_count = len(activity_history)
             event_name = str(copy.get("event") or "").strip()
             if event_name:
-                pending_status_reason = event_name
+                noisy_events = {
+                    "MICRO_BUY_SKIPPED",
+                    "MICRO_BUY_COOLDOWN",
+                    "MICRO_BUY_LIMITED",
+                    "MICRO_EXIT_SKIPPED",
+                    "MICRO_SKIP",
+                }
+
+                def _is_significant(name: str) -> bool:
+                    if name in noisy_events:
+                        return False
+                    keywords = (
+                        "MICRO_",
+                        "LADDER",
+                        "DIP",
+                        "RIP",
+                        "ANCHOR",
+                        "ENTER",
+                        "EXIT",
+                    )
+                    return any(key in name for key in keywords)
+
+                if _is_significant(event_name):
+                    pending_status_reason = event_name
 
         profit_allocator.process_pending(
             discount_symbol,

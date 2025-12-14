@@ -122,6 +122,7 @@ def state_to_payload(state: StrategyState) -> Dict[str, Any]:
         "micro_positions": list(state.micro_positions),
         "micro_last_exit_price": state.micro_last_exit_price,
         "micro_loss_recovery_pct": state.micro_loss_recovery_pct,
+        "micro_tp_markup_pct": getattr(state, "micro_tp_markup_pct", 0.0),
     }
 
 
@@ -173,6 +174,7 @@ def apply_payload_to_state(state: StrategyState, payload: Dict[str, Any]) -> Non
     state.micro_positions = list(payload.get("micro_positions", state.micro_positions))
     state.micro_last_exit_price = payload.get("micro_last_exit_price", state.micro_last_exit_price)
     state.micro_loss_recovery_pct = float(payload.get("micro_loss_recovery_pct", state.micro_loss_recovery_pct))
+    state.micro_tp_markup_pct = float(payload.get("micro_tp_markup_pct", getattr(state, "micro_tp_markup_pct", 0.0)))
 
 
 def load_savepoint(directory: Path, symbol: str) -> Optional[Dict[str, Any]]:

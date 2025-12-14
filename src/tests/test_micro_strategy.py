@@ -366,3 +366,43 @@ def test_micro_prunes_when_qty_guard_hits():
     events.clear()
     state._check_micro_take_profit(ts, h=position["stop"], l=position["stop"], log_events=events)
     assert not events
+
+
+def test_micro_adaptive_tp_markup_increases_after_fast_loss():
+    state = make_state()
+    state.micro.take_profit_pct = 0.005
+    state.micro.stop_break_pct = 0.002
+    state.micro.tp_fast_trade_bars = 10
+    state.micro.tp_markup_step = 0.001
+    state.micro.tp_markup_step_loss = 0.002
+    state.micro.tp_markup_step_fast_loss = 0.001
+    state.micro.tp_markup_max = 0.01
+    state.rebuild_ladder(100.0)
+    seed_micro_ready(state)
+
+    events: List[Dict[str, Any]] = []
+    ts = pd.Timestamp("2025-01-01T00:00:00Z")
+    state._maybe_micro_buy(ts, h=100.3, l=99.7, log_events=events)
+    position = state.micro_positions[0]
+
+    # Force a quick stop-out with taker fees to realise a loss
+    state.fees_sell = 0.005
+    events.clear()
+    state.bar_index = position["entry_bar"] + 2
+    state._check_micro_take_profit(ts, h=position["stop"], l=position["stop"], log_events=events)
+
+    expected_markup = state.micro.tp_markup_step + state.micro.tp_markup_step_loss + state.micro.tp_markup_step_fast_loss
+    assert state.micro_tp_markup_pct >= expected_markup
+
+    # Cooldown then re-enter and ensure the higher markup inflates the next target
+    state.bar_index = state.micro_cooldown_until_bar + 2
+    new_base = state.micro_last_exit_price * (1 - state.micro.reentry_drop_pct - 0.002)
+    state.micro_prices = [new_base * (1 + d) for d in (0.0003, -0.0004, 0.0006, -0.0002, 0.0005)]
+    state.micro_swings = state.micro.min_swings
+    state.micro_last_direction = None
+    state.ladder_next_idx = 0
+    events.clear()
+    state._maybe_micro_buy(ts, h=new_base * 1.001, l=new_base * 0.999, log_events=events)
+    new_buy = next(e for e in events if e["event"] == "MICRO_BUY")
+    min_expected_tp = state.micro.take_profit_pct + state.micro_loss_recovery_pct + state.micro_tp_markup_pct
+    assert new_buy["target"] >= new_buy["price"] * (1 + min_expected_tp)
