@@ -99,7 +99,7 @@ class MicroOscillationConf:
     entry_band_pct: float = 0.15
     take_profit_pct: float = 0.0025
     stop_break_pct: float = 0.005
-    min_profit_pct: float = 0.0015
+    min_profit_pct: float = 0.0075
     tp_adapt_enabled: bool = True
     tp_fast_trade_bars: int = 20
     tp_markup_step: float = 0.001
@@ -846,18 +846,22 @@ class StrategyState:
         tp_pct = tp_pct
         if self.micro.loss_recovery_enabled:
             tp_pct = min(tp_pct + self.micro_loss_recovery_pct, self.micro.loss_recovery_max_pct)
-        tp_pct = tp_pct + min(self.micro_tp_markup_pct, getattr(self.micro, "tp_markup_max", float("inf")))            
+        tp_pct = tp_pct + min(self.micro_tp_markup_pct, getattr(self.micro, "tp_markup_max", float("inf")))
         break_even_price = cost / qty / max(1 - self.fees_sell, 1e-9)
-        target = price * (1 + tp_pct)
         min_profit_pct = max(
             getattr(self.micro, "min_profit_pct", 0.0),
             self.fees_buy + self.fees_sell,
-            0.0,
+            0.005,
         )
+        target = price * (1 + tp_pct)
         min_profit_price = break_even_price * (1 + min_profit_pct)
         if target < min_profit_price:
             target = min_profit_price
-        stop = max(price * (1 - stop_break_pct), break_even_price)
+        loss_guard_pct = max(self.fees_buy + self.fees_sell, 0.0)
+        stop = max(
+            price * (1 - stop_break_pct),
+            break_even_price * (1 + loss_guard_pct),
+        )
         self.micro_positions.append({
             "entry": price,
             "qty": qty,

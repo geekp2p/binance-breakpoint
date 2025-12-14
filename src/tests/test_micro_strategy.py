@@ -248,7 +248,7 @@ def test_micro_take_profit_respects_fees_and_margin():
 
     position = state.micro_positions[0]
     break_even = position["cost"] / position["qty"] / (1 - state.fees_sell)
-    effective_min_profit = max(state.micro.min_profit_pct, state.fees_buy + state.fees_sell)
+    effective_min_profit = max(state.micro.min_profit_pct, state.fees_buy + state.fees_sell, 0.005)
     assert position["target"] >= break_even * (1 + effective_min_profit)
 
 
