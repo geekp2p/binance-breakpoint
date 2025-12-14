@@ -777,6 +777,10 @@ def main() -> None:
             target_price = float(ev.get("price") or 0.0)
             cost = float(ev.get("cost") or 0.0)
             sell_qty = qty
+            min_no_loss_price = None
+            if qty > 0 and cost > 0:
+                min_no_loss_price = (cost / qty) / max(1 - state.fees_sell, 1e-9)
+                min_no_loss_price *= 1 + state.trail.no_loss_epsilon
             if client and base_asset:
                 try:
                     available = client.get_free_balance(base_asset)
@@ -795,6 +799,16 @@ def main() -> None:
                 return
 
             price_for_validation = target_price or last_close_price
+            if (
+                min_no_loss_price is not None
+                and price_for_validation > 0
+                and price_for_validation < min_no_loss_price
+            ):
+                ev["skip_reason"] = "BELOW_BREAK_EVEN"
+                ev["breakeven_price"] = min_no_loss_price
+                ev["last_price"] = price_for_validation
+                record_history(ev)
+                return
             if client and price_for_validation > 0:
                 min_notional = client.get_min_notional(pair_cfg.symbol)
                 est_notional = sell_qty * price_for_validation
@@ -1944,33 +1958,41 @@ def main() -> None:
                     )
                     target_price = float(res.get("sell_price") or 0.0)
                     latest_price = float(kline.get("close") or 0.0)
+                    core = state._core_position()
+                    min_no_loss_price = None
+                    if core["qty"] > 0 and core["cost"] > 0:
+                        min_no_loss_price = (core["cost"] / core["qty"]) / max(
+                            1 - state.fees_sell, 1e-9
+                        )
+                        min_no_loss_price *= 1 + state.trail.no_loss_epsilon
+                    min_acceptable = min_no_loss_price or 0.0
                     if max_exit_slippage_pct > 0 and target_price > 0:
-                        min_acceptable = target_price * (1 - max_exit_slippage_pct)
-                        if latest_price < min_acceptable:
-                            logging.warning(
-                                (
-                                    "Skip exit %s: last price %.4f is below acceptable %.4f "
-                                    "(target %.4f, tolerance %.4f%%)"
-                                ),
-                                res.get("reason"),
-                                latest_price,
-                                min_acceptable,
-                                target_price,
-                                max_exit_slippage_pct * 100,
-                            )
-                            record_history(
-                                {
-                                    "ts": ts,
-                                    "event": "EXIT_ABORTED_SLIPPAGE",
-                                    "reason": res.get("reason"),
-                                    "target_price": target_price,
-                                    "latest_price": latest_price,
-                                    "min_acceptable": min_acceptable,
-                                    "max_slippage_pct": max_exit_slippage_pct,
-                                }
-                            )
-                            pending_status_reason = "EXIT_ABORTED_SLIPPAGE"
-                            continue
+                        min_acceptable = max(min_acceptable, target_price * (1 - max_exit_slippage_pct))
+                    if min_acceptable > 0 and latest_price < min_acceptable:
+                        logging.warning(
+                            (
+                                "Skip exit %s: last price %.4f is below acceptable %.4f "
+                                "(target %.4f, tolerance %.4f%%)"
+                            ),
+                            res.get("reason"),
+                            latest_price,
+                            min_acceptable,
+                            target_price,
+                            max_exit_slippage_pct * 100,
+                        )
+                        record_history(
+                            {
+                                "ts": ts,
+                                "event": "EXIT_ABORTED_SLIPPAGE",
+                                "reason": res.get("reason"),
+                                "target_price": target_price,
+                                "latest_price": latest_price,
+                                "min_acceptable": min_acceptable,
+                                "max_slippage_pct": max_exit_slippage_pct,
+                            }
+                        )
+                        pending_status_reason = "EXIT_ABORTED_SLIPPAGE"
+                        continue
                     realized_pnl = float(res.get("pnl") or 0.0)
                     if client and sell_qty > 0:
                         available = None
@@ -2039,6 +2061,12 @@ def main() -> None:
                                 time.sleep(sell_chunk_delay)
                         sell_qty = sold_total
                         profit_allocator.record_fees_from_fills(pair_symbol, all_fills, pair_cfg.quote)
+                        if all_fills and qty > 0 and sell_qty > 0:
+                            weighted_price = _weighted_fill_price({"fills": all_fills})
+                            if weighted_price:
+                                net_proceeds = weighted_price * sell_qty * (1 - state.fees_sell)
+                                cost_share = core["cost"] * (sell_qty / qty)
+                                realized_pnl = max(net_proceeds - cost_share, 0.0)
                     if qty > 0 and sell_qty != qty:
                         realized_pnl *= sell_qty / qty
                     micro_totals = state._micro_totals()
