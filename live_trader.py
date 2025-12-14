@@ -1494,6 +1494,46 @@ def main() -> None:
                 record_history({"ts": ts, "event": "MANUAL_EXIT_SKIPPED", "reason": "no_position"})
                 return True
 
+            fee_rate = max(state.fees_sell, 0.001)
+            break_even_price = state.C / (qty * max(1 - fee_rate, 1e-9)) if qty > 0 else None
+
+            def _price_guard() -> Optional[float]:
+                price = None
+                if client:
+                    try:
+                        price = client.get_ticker_price(pair_cfg.symbol)
+                    except Exception as exc:  # pylint: disable=broad-except
+                        logging.warning("Unable to fetch ticker before manual exit: %s", exc)
+                if not price:
+                    try:
+                        price = float(last_status.get("price") or latest["close"])
+                    except Exception:  # pylint: disable=broad-except
+                        price = None
+                return price if price and price > 0 else None
+
+            market_price = _price_guard()
+            if break_even_price:
+                if market_price is None:
+                    record_history(
+                        {
+                            "ts": ts,
+                            "event": "MANUAL_EXIT_SKIPPED",
+                            "reason": "no_price_for_guard",
+                        }
+                    )
+                    return True
+                if market_price < break_even_price:
+                    record_history(
+                        {
+                            "ts": ts,
+                            "event": "MANUAL_EXIT_SKIPPED",
+                            "reason": "below_break_even",
+                            "price": market_price,
+                            "break_even": break_even_price,
+                        }
+                    )
+                    return True
+
             executed_qty = qty
             avg_price: Optional[float] = None
             sell_response: Optional[Dict[str, object]] = None
@@ -1544,7 +1584,6 @@ def main() -> None:
                 avg_price = float(last_status.get("price") or latest["close"])
 
             gross_proceeds = avg_price * executed_qty
-            fee_rate = max(state.fees_sell, 0.001)
             net_proceeds = gross_proceeds * (1 - fee_rate)
             cost_share = state.C * (executed_qty / qty) if qty > 0 else 0.0
             realized_pnl = net_proceeds - cost_share
