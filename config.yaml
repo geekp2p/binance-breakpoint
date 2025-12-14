@@ -770,6 +770,8 @@ pairs:
 general:
   snapshot_every_bars: 1
   use_maker: true
+  # จำกัดสลิปเพจก่อนยิงคำสั่ง EXIT (0 = ปิดการตรวจสอบ)
+  max_exit_slippage_pct: 0.003
   sell_scale_out: { chunks: 2, delay_seconds: 1, profit_only: true }
   binance:
     base_url: "https://api.binance.com"

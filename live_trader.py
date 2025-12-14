@@ -467,6 +467,7 @@ def main() -> None:
     binance_cfg = (general.get("binance") or {})
     base_url = binance_cfg.get("base_url", "https://api.binance.com")
     profit_cfg = ProfitRecycleConfig.from_dict(general.get("profit_recycling", {}))
+    max_exit_slippage_pct = float(general.get("max_exit_slippage_pct", 0.0))
 
     pairs_raw = cfg.get("pairs", [])
     if not pairs_raw:
@@ -1941,6 +1942,35 @@ def main() -> None:
                         sell_qty,
                         res.get("pnl", 0.0),
                     )
+                    target_price = float(res.get("sell_price") or 0.0)
+                    latest_price = float(kline.get("close") or 0.0)
+                    if max_exit_slippage_pct > 0 and target_price > 0:
+                        min_acceptable = target_price * (1 - max_exit_slippage_pct)
+                        if latest_price < min_acceptable:
+                            logging.warning(
+                                (
+                                    "Skip exit %s: last price %.4f is below acceptable %.4f "
+                                    "(target %.4f, tolerance %.4f%%)"
+                                ),
+                                res.get("reason"),
+                                latest_price,
+                                min_acceptable,
+                                target_price,
+                                max_exit_slippage_pct * 100,
+                            )
+                            record_history(
+                                {
+                                    "ts": ts,
+                                    "event": "EXIT_ABORTED_SLIPPAGE",
+                                    "reason": res.get("reason"),
+                                    "target_price": target_price,
+                                    "latest_price": latest_price,
+                                    "min_acceptable": min_acceptable,
+                                    "max_slippage_pct": max_exit_slippage_pct,
+                                }
+                            )
+                            pending_status_reason = "EXIT_ABORTED_SLIPPAGE"
+                            continue
                     realized_pnl = float(res.get("pnl") or 0.0)
                     if client and sell_qty > 0:
                         available = None
