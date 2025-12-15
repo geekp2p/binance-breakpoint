@@ -422,6 +422,7 @@ def main() -> None:
     parser.add_argument("--lookback-days", type=float, default=3.0, help="Historical days to replay")
     parser.add_argument("--speed", type=float, default=24.0, help="Time acceleration factor")
     parser.add_argument("--http-port", type=int, default=8080)
+    parser.add_argument("--http-host", default="0.0.0.0", help="Host/IP to bind the HTTP server")
     args = parser.parse_args()
 
     cfg = load_config(args.config)
@@ -437,7 +438,7 @@ def main() -> None:
 
     start_simulator(symbol=DEFAULT_SYMBOL, lookback_days=args.lookback_days, speed=args.speed)
 
-    app.run(host="0.0.0.0", port=args.http_port)
+    app.run(host=args.http_host, port=args.http_port)
 
 
 if __name__ == "__main__":

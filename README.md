@@ -89,7 +89,7 @@ python summary.py --savepoint-dir savepoint --out-dir out
 - ตั้ง `--dry-run` เพื่อทดลองโดยไม่ส่งคำสั่งจริง: `python live_trader.py --dry-run --symbol ZECUSDT`
 - ใน Docker ใช้บริการ `live` (ต้องมี `.env` ใส่คีย์) และควรติดตาม log อย่างใกล้ชิด
 
-- เปิด HTTP control server ดีฟอลต์ที่พอร์ต `8080` สำหรับเช็ค health และสั่งหยุด/ทำงานต่อ (ตั้ง `--http-port 0` เพื่อปิด)
+- เปิด HTTP control server ดีฟอลต์ที่พอร์ต `8080` สำหรับเช็ค health และสั่งหยุด/ทำงานต่อ (ตั้ง `--http-port 0` เพื่อปิด หรือเปลี่ยน interface ด้วย `--http-host`)
   - เช็คสถานะ: `curl http://localhost:8080/health`
   - หยุดทุกคู่: `curl -X POST http://localhost:8080/pause`
   - หยุดเฉพาะคู่: `curl -X POST 'http://localhost:8080/pause?symbol=ZECUSDT'`

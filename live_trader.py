@@ -405,14 +405,14 @@ def create_http_handler(control: ControlCenter):
     return Handler
 
 
-def start_http_server(control: ControlCenter, port: int) -> Optional[ThreadingHTTPServer]:
+def start_http_server(control: ControlCenter, host: str, port: int) -> Optional[ThreadingHTTPServer]:
     if port <= 0:
         return None
     handler = create_http_handler(control)
-    httpd = ThreadingHTTPServer(("", port), handler)
+    httpd = ThreadingHTTPServer((host, port), handler)
     thread = threading.Thread(target=httpd.serve_forever, daemon=True)
     thread.start()
-    logging.info("Control server listening on http://0.0.0.0:%s", port)
+    logging.info("Control server listening on http://%s:%s", host, port)
     return httpd
 
 
@@ -457,6 +457,11 @@ def main() -> None:
         type=int,
         default=8080,
         help="Port for health/pause/resume server (set 0 to disable)",
+    )
+    parser.add_argument(
+        "--http-host",
+        default="0.0.0.0",
+        help="Host/IP to bind the control server (default: 0.0.0.0)",
     )
     args = parser.parse_args()
 
@@ -2181,7 +2186,7 @@ def main() -> None:
         raise SystemExit(f"Symbol {symbol_filter} not found in config")
 
     control = ControlCenter([p["symbol"].upper() for p in selected_pairs])
-    start_http_server(control, args.http_port)
+    start_http_server(control, args.http_host, args.http_port)
 
     with ThreadPoolExecutor(max_workers=len(selected_pairs)) as executor:
         futures = [executor.submit(run_pair, pair_raw) for pair_raw in selected_pairs]
