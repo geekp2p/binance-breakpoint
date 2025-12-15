@@ -11,7 +11,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
-from typing import Dict, List, Optional, Mapping
+from typing import Dict, List, Optional, Mapping, Sequence
 
 import requests
 from urllib.parse import parse_qs, urlparse
@@ -749,6 +749,35 @@ def main() -> None:
                 return None
             return total_quote / total_qty
 
+        def _apply_commission_adjustments(
+            fills: Sequence[Dict[str, object]],
+            *,
+            base_asset: Optional[str],
+            quote_asset: str,
+            executed_qty: float,
+            price_hint: float,
+        ) -> tuple[float, float, float]:
+            """Adjust proceeds/quantity based on actual commission assets."""
+
+            commission_base = 0.0
+            commission_quote = 0.0
+            for f in fills:
+                try:
+                    commission = float(f.get("commission", 0.0))
+                    asset = str(f.get("commissionAsset", "")).upper()
+                except (TypeError, ValueError):
+                    continue
+                if base_asset and asset == base_asset:
+                    commission_base += commission
+                elif asset == quote_asset:
+                    commission_quote += commission
+
+            net_qty = max(executed_qty - commission_base, 0.0)
+            price = _weighted_fill_price({"fills": fills}) or price_hint
+            gross_proceeds = net_qty * price if price is not None else 0.0
+            net_proceeds = max(gross_proceeds - commission_quote, 0.0)
+            return net_qty, gross_proceeds, net_proceeds
+
         def _normalise_buy_event(ev: Dict[str, object]) -> None:
             """Ensure buy events expose standard sizing keys.
 
@@ -863,13 +892,26 @@ def main() -> None:
                 record_history(ev)
                 return
 
+            if fills:
+                adjusted_qty, gross_proceeds, net_proceeds = _apply_commission_adjustments(
+                    fills,
+                    base_asset=base_asset,
+                    quote_asset=pair_cfg.quote.upper(),
+                    executed_qty=executed_qty,
+                    price_hint=fill_price or last_close_price,
+                )
+                executed_qty = adjusted_qty
+            else:
+                gross_proceeds = executed_qty * fill_price
+                net_proceeds = gross_proceeds * (1 - state.fees_sell)
+
             if executed_qty < qty:
                 unsold = qty - executed_qty
                 state.Q += unsold
                 state.C += cost * (unsold / qty)
 
-            proceeds = executed_qty * fill_price * (1 - state.fees_sell)
             effective_cost = cost * (executed_qty / qty)
+            proceeds = net_proceeds
             realized_pnl = proceeds - effective_cost
             update_realized_pnl(micro_delta=realized_pnl)
             ev["executed_qty"] = executed_qty
@@ -1542,6 +1584,7 @@ def main() -> None:
             executed_qty = qty
             avg_price: Optional[float] = None
             sell_response: Optional[Dict[str, object]] = None
+            commission_quote = 0.0
             if client:
                 try:
                     available_qty = executed_qty
@@ -1561,14 +1604,19 @@ def main() -> None:
                     commission_base = 0.0
                     fills = sell_response.get("fills") if isinstance(sell_response, dict) else None
                     profit_allocator.record_fees_from_fills(pair_symbol, fills, pair_cfg.quote)
-                    if base_asset and fills:
-                        for f in fills:
-                            try:
-                                if str(f.get("commissionAsset", "")).upper() == base_asset:
-                                    commission_base += float(f.get("commission", 0.0))
-                            except (TypeError, ValueError):
-                                continue
-                    executed_qty = max(executed_qty - commission_base, 0.0)
+                    if fills:
+                        adjusted_qty, gross_proceeds, net_proceeds = _apply_commission_adjustments(
+                            fills,
+                            base_asset=base_asset,
+                            quote_asset=pair_cfg.quote.upper(),
+                            executed_qty=executed_qty,
+                            price_hint=avg_price or last_status.get("price") or latest["close"],
+                        )
+                        commission_base = max(executed_qty - adjusted_qty, 0.0)
+                        commission_quote = max(gross_proceeds - net_proceeds, 0.0)
+                        executed_qty = adjusted_qty
+                    else:
+                        commission_base = 0.0
                 except Exception as exc:  # pylint: disable=broad-except
                     logging.error("Manual sell failed: %s", exc)
                     record_history({"ts": ts, "event": "MANUAL_EXIT_FAILED", "reason": str(exc)})
@@ -1589,7 +1637,7 @@ def main() -> None:
                 avg_price = float(last_status.get("price") or latest["close"])
 
             gross_proceeds = avg_price * executed_qty
-            net_proceeds = gross_proceeds * (1 - fee_rate)
+            net_proceeds = max(gross_proceeds * (1 - fee_rate) - commission_quote, 0.0)
             cost_share = state.C * (executed_qty / qty) if qty > 0 else 0.0
             realized_pnl = net_proceeds - cost_share
 
@@ -2108,9 +2156,17 @@ def main() -> None:
                         if all_fills and qty > 0 and sell_qty > 0:
                             weighted_price = _weighted_fill_price({"fills": all_fills})
                             if weighted_price:
-                                net_proceeds = weighted_price * sell_qty * (1 - state.fees_sell)
-                                cost_share = core["cost"] * (sell_qty / qty)
-                                realized_pnl = max(net_proceeds - cost_share, 0.0)
+                                adjusted_qty, _, net_proceeds = _apply_commission_adjustments(
+                                    all_fills,
+                                    base_asset=base_asset,
+                                    quote_asset=pair_cfg.quote.upper(),
+                                    executed_qty=sell_qty,
+                                    price_hint=weighted_price,
+                                )
+                                sold_qty = adjusted_qty
+                                cost_share = core["cost"] * (sold_qty / qty)
+                                realized_pnl = net_proceeds - cost_share
+                                sell_qty = sold_qty
                     if qty > 0 and sell_qty != qty:
                         realized_pnl *= sell_qty / qty
                     micro_totals = state._micro_totals()
