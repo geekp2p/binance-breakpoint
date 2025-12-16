@@ -2051,9 +2051,21 @@ def main() -> None:
                     target_price = float(res.get("sell_price") or 0.0)
                     latest_price = float(kline.get("close") or 0.0)
                     core = state._core_position()
+                    core_cost = float(res.get("cost") or 0.0)
+                    try:
+                        if core_cost <= 0:
+                            proceeds_hint = float(res.get("proceeds") or 0.0)
+                            core_cost = max(proceeds_hint - realized_pnl, 0.0)
+                    except (TypeError, ValueError):
+                        core_cost = core_cost
+                    if core_cost <= 0:
+                        try:
+                            core_cost = float(core.get("cost", 0.0))
+                        except (TypeError, ValueError):
+                            core_cost = 0.0
                     min_no_loss_price = None
-                    if core["qty"] > 0 and core["cost"] > 0:
-                        min_no_loss_price = (core["cost"] / core["qty"]) / max(
+                    if core["qty"] > 0 and core_cost > 0:
+                        min_no_loss_price = (core_cost / core["qty"]) / max(
                             1 - state.fees_sell, 1e-9
                         )
                         min_no_loss_price *= 1 + state.trail.no_loss_epsilon
@@ -2164,15 +2176,15 @@ def main() -> None:
                                     price_hint=weighted_price,
                                 )
                                 sold_qty = adjusted_qty
-                                cost_share = core["cost"] * (sold_qty / qty)
+                                cost_share = core_cost * (sold_qty / qty)
                                 realized_pnl = net_proceeds - cost_share
                                 sell_qty = sold_qty
                     if qty > 0 and sell_qty != qty:
                         realized_pnl *= sell_qty / qty
-                    micro_totals = state._micro_totals()
-                    ladder_cost = max(state.C - micro_totals.get("cost", 0.0), 0.0)
+                        core_cost *= sell_qty / qty
+                    ladder_cost = max(core_cost, 0.0)
                     ladder_pnl, micro_pnl = split_realized_pnl(
-                        realized_pnl, micro_totals.get("cost", 0.0), ladder_cost
+                        realized_pnl, 0.0, ladder_cost
                     )
                     update_realized_pnl(ladder_delta=ladder_pnl, micro_delta=micro_pnl)
                     if realized_pnl > 0:

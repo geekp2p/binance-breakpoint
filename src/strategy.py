@@ -1288,7 +1288,7 @@ class StrategyState:
                     if self.Q <= 0:
                         self.round_active = False
                     self._reset_btd_progress()
-                    return {"sell_price": F, "pnl": pnl, "reason":"TRAIL_PULLBACK", "qty": qty}
+                    return {"sell_price": F, "pnl": pnl, "reason":"TRAIL_PULLBACK", "qty": qty, "cost": core["cost"], "proceeds": proceeds}
 
         # --- idle/total caps ---
         if self.phase == PHASE_ACCUMULATE and not self.idle_checked:
@@ -1307,7 +1307,7 @@ class StrategyState:
                         if self.Q <= 0:
                             self.round_active = False
                         self._reset_btd_progress()
-                        return {"sell_price": target, "pnl": pnl, "reason":"IDLE_EXIT", "qty": qty}
+                        return {"sell_price": target, "pnl": pnl, "reason":"IDLE_EXIT", "qty": qty, "cost": core["cost"], "proceeds": proceeds}
                 self.idle_checked = True
 
         minutes_round = (ts - self.round_start_ts).total_seconds()/60.0
@@ -1325,5 +1325,5 @@ class StrategyState:
                     if self.Q <= 0:
                         self.round_active = False
                     self._reset_btd_progress()
-                    return {"sell_price": target, "pnl": pnl, "reason":"TOTAL_CAP", "qty": qty}
+                    return {"sell_price": target, "pnl": pnl, "reason":"TOTAL_CAP", "qty": qty, "cost": core["cost"], "proceeds": proceeds}
         return None
