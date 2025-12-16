@@ -798,14 +798,16 @@ class StrategyState:
             self.micro.take_profit_pct,
             volatility_pct * self.micro.volatility_take_profit_mult,
         )
-        reentry_drop_pct = max(
+        base_reentry_pct = max(
             self.micro.reentry_drop_pct,
             volatility_pct * self.micro.volatility_reentry_mult,
         )
         if atr_pct is not None:
             stop_break_pct = max(stop_break_pct, atr_pct * self.micro.atr_stop_mult)
             tp_pct = max(tp_pct, atr_pct * self.micro.atr_take_profit_mult)
-            reentry_drop_pct = max(reentry_drop_pct, atr_pct * self.micro.atr_reentry_mult)        
+            base_reentry_pct = max(base_reentry_pct, atr_pct * self.micro.atr_reentry_mult)
+        # Require an extra pullback to offset round-trip fees before re-entering
+        reentry_drop_pct = min(base_reentry_pct + max(self.fees_buy + self.fees_sell, 0.0), 0.99)
         
         if (
             self.micro_last_exit_price is not None

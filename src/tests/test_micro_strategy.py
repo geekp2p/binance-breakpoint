@@ -95,7 +95,9 @@ def test_micro_buy_sell_and_reentry_guard():
     # After a deeper pullback we can re-enter
     events.clear()
     state.bar_index = state.micro_cooldown_until_bar + 2
-    pulled_back_base = entry_price * (1 - state.micro.reentry_drop_pct - 0.0015)
+    pulled_back_base = entry_price * (
+        1 - state.micro.reentry_drop_pct - state.fees_buy - state.fees_sell - 0.0015
+    )
     state.micro_prices = [
         pulled_back_base * (1 + delta)
         for delta in (0.0002, -0.0004, 0.0007, -0.0001, 0.0005)
@@ -239,7 +241,9 @@ def test_micro_loss_recovery_boosts_next_take_profit():
 
     # Allow cooldown to expire and rebuild a new ready window below last exit
     state.bar_index = state.micro_cooldown_until_bar + 2
-    base = state.micro_last_exit_price * (1 - state.micro.reentry_drop_pct - 0.002)
+    base = state.micro_last_exit_price * (
+        1 - state.micro.reentry_drop_pct - state.fees_buy - state.fees_sell - 0.002
+    )
     state.micro_prices = [base * (1 + d) for d in (0.0004, -0.0006, 0.0009, -0.0003, 0.0007)]
     state.micro_swings = state.micro.min_swings
     state.micro_last_direction = None
@@ -322,6 +326,7 @@ def test_micro_atr_scales_thresholds():
         atr_pct * state.micro.atr_reentry_mult,
         volatility_pct * state.micro.volatility_reentry_mult,
     )
+    required_pullback = min(scaled_reentry + state.fees_buy + state.fees_sell, 0.99)
     entry_guess = snapshot["low"] + (snapshot["high"] - snapshot["low"]) * state.micro.entry_band_pct
     state.micro_last_exit_price = entry_guess * 0.5
     events = []
@@ -330,13 +335,13 @@ def test_micro_atr_scales_thresholds():
 
     skip = [e for e in events if e.get("reason") == "NEED_PULLBACK"]
     assert skip, "expected pullback guard when re-entering too soon"
-    assert skip[0]["reentry_drop_pct"] >= scaled_reentry
+    assert skip[0]["reentry_drop_pct"] >= required_pullback
 
     # Allow re-entry after a deeper pullback and check thresholds scale
     events.clear()
     state.bar_index = state.micro_cooldown_until_bar + 1
     state.micro_last_exit_price = state.micro_last_exit_price * (1 + state.micro.reentry_drop_pct)
-    deep_pullback_low = state.micro_last_exit_price * (1 - scaled_reentry - 0.005)
+    deep_pullback_low = state.micro_last_exit_price * (1 - required_pullback - 0.005)
     state.micro_prices = [deep_pullback_low * (1 + delta) for delta in (0.002, -0.003, 0.004, -0.002, 0.003)]
     state.micro_swings = state.micro.min_swings
     state.micro_last_direction = None
@@ -418,7 +423,9 @@ def test_micro_adaptive_tp_markup_increases_after_fast_loss():
 
     # Cooldown then re-enter and ensure the higher markup inflates the next target
     state.bar_index = state.micro_cooldown_until_bar + 2
-    new_base = state.micro_last_exit_price * (1 - state.micro.reentry_drop_pct - 0.002)
+    new_base = state.micro_last_exit_price * (
+        1 - state.micro.reentry_drop_pct - state.fees_buy - state.fees_sell - 0.002
+    )
     state.micro_prices = [new_base * (1 + d) for d in (0.0003, -0.0004, 0.0006, -0.0002, 0.0005)]
     state.micro_swings = state.micro.min_swings
     state.micro_last_direction = None
