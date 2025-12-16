@@ -1,7 +1,9 @@
 import json
 from pathlib import Path
 
-from src.pnl_summary import load_fees_snapshot, render_summary_report
+import pytest
+
+from src.pnl_summary import load_fees_snapshot, load_savepoint_rows, render_summary_report
 
 
 def test_load_fees_snapshot_handles_missing_file(tmp_path: Path) -> None:
@@ -86,3 +88,22 @@ def test_render_summary_report_highlights_winners_and_losers(tmp_path: Path) -> 
     assert "LOSE: -12.00 (Realized -5.00 | จากราคา -7.00" in report
     assert "กำไรสูงสุด (ตาม Total)" in report
     assert "WIN: 15.00 (Realized 12.00 | จากราคา 3.00" in report
+
+
+def test_savepoint_realized_pnl_prefers_event_log(tmp_path: Path) -> None:
+    savepoints = tmp_path / "savepoints"
+    savepoints.mkdir()
+
+    payload = {
+        "symbol": "dcrusdt",
+        "status": {"realized_pnl_total": 100.0, "unrealized_pnl": 0},
+        "event_log": [
+            {"event": "SELL", "pnl": 0.69},
+            {"event": "SELL", "pnl": -0.10},
+        ],
+    }
+    (savepoints / "DCRUSDT.json").write_text(json.dumps(payload), encoding="utf-8")
+
+    rows = load_savepoint_rows(savepoints)
+
+    assert rows[0].realized == pytest.approx(0.59)

@@ -78,6 +78,9 @@ def test_micro_buy_sell_and_reentry_guard():
     state._check_micro_take_profit(ts, h=state.micro_positions[0]["target"], l=state.micro_positions[0]["target"], log_events=events)
     assert not state.micro_positions, "micro position should be closed on TP"
     exit_event = next(e for e in events if e["event"] == "MICRO_TP")
+    assert exit_event["price"] >= entry_price, "should sell at or above entry to secure profit"
+    assert exit_event["proceeds"] > exit_event["cost"], "proceeds must exceed cost after fees"
+    assert exit_event["pnl"] > 0, "take-profit exit should lock in positive PnL"
     assert exit_event["price"] == state.micro_last_exit_price
     assert state.micro_cooldown_until_bar > state.bar_index
 

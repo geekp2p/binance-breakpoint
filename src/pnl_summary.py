@@ -30,6 +30,9 @@ class PnLRow:
         symbol = str(payload.get("symbol") or path.stem).upper()
         status = payload.get("status") if isinstance(payload.get("status"), dict) else {}
         realized = _to_float(status.get("realized_pnl_total") or payload.get("realized_pnl_total"))
+        realized_from_events = _sum_realized_pnl(payload)
+        if realized_from_events is not None:
+            realized = realized_from_events
         price_move = _to_float(status.get("unrealized_pnl"))
         qty = _to_float(status.get("qty"))
         price = _to_float(status.get("price") or payload.get("latest_price"))
@@ -79,11 +82,29 @@ def _symbol_from_name(name: str) -> str:
     return name
 
 
-def _to_float(value: object, default: float = 0.0) -> float:
+def _to_float(value: object, default: Optional[float] = 0.0) -> Optional[float]:
     try:
         return float(value)
     except (TypeError, ValueError):
         return default
+
+
+def _sum_realized_pnl(payload: Dict[str, object]) -> Optional[float]:
+    events = payload.get("event_log")
+    if not isinstance(events, list):
+        return None
+
+    total = 0.0
+    found = False
+    for event in events:
+        if not isinstance(event, dict):
+            continue
+        pnl = _to_float(event.get("pnl"), default=None)  # type: ignore[arg-type]
+        if pnl is None:
+            continue
+        total += pnl
+        found = True
+    return total if found else None
 
 
 def _load_json(path: Path) -> Optional[Dict[str, object]]:
