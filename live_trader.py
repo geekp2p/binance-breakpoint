@@ -1727,6 +1727,8 @@ def main() -> None:
 
                 ts = kline["timestamp"]
                 last_close_price = float(kline["close"])
+                prev_core_position = state._core_position()
+
                 res = state.on_bar(
                     ts,
                     kline["open"],
@@ -2052,6 +2054,8 @@ def main() -> None:
                     latest_price = float(kline.get("close") or 0.0)
                     core = state._core_position()
                     core_cost = float(res.get("cost") or 0.0)
+                    if core_cost <= 0:
+                        core_cost = float(prev_core_position.get("cost") or 0.0)
                     try:
                         if core_cost <= 0:
                             proceeds_hint = float(res.get("proceeds") or 0.0)
