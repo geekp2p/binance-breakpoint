@@ -47,9 +47,9 @@ pairs:
 
     time_caps:
       T_idle_max_minutes: 45
-      p_idle: 0.004
+      p_idle: 0.008
       T_total_cap_minutes: 180
-      p_exit_min: 0.004
+      p_exit_min: 0.008
 
     features:
       scalp_mode:
@@ -174,9 +174,9 @@ pairs:
 
     time_caps:
       T_idle_max_minutes: 45
-      p_idle: 0.004
+      p_idle: 0.008
       T_total_cap_minutes: 180
-      p_exit_min: 0.004
+      p_exit_min: 0.008
 
     features:
       scalp_mode:
@@ -301,9 +301,9 @@ pairs:
 
     time_caps:
       T_idle_max_minutes: 45
-      p_idle: 0.004
+      p_idle: 0.008
       T_total_cap_minutes: 180
-      p_exit_min: 0.004
+      p_exit_min: 0.008
 
     features:
       scalp_mode:
@@ -428,9 +428,9 @@ pairs:
 
     time_caps:
       T_idle_max_minutes: 45
-      p_idle: 0.004
+      p_idle: 0.008
       T_total_cap_minutes: 180
-      p_exit_min: 0.004
+      p_exit_min: 0.008
 
     features:
       scalp_mode:
@@ -555,9 +555,9 @@ pairs:
 
     time_caps:
       T_idle_max_minutes: 45
-      p_idle: 0.004
+      p_idle: 0.008
       T_total_cap_minutes: 180
-      p_exit_min: 0.004
+      p_exit_min: 0.008
 
     features:
       scalp_mode:
@@ -683,9 +683,9 @@ pairs:
 
     time_caps:
       T_idle_max_minutes: 45
-      p_idle: 0.004
+      p_idle: 0.008
       T_total_cap_minutes: 180
-      p_exit_min: 0.004
+      p_exit_min: 0.008
 
     features:
       scalp_mode:
@@ -772,7 +772,7 @@ general:
   use_maker: true
   # จำกัดสลิปเพจก่อนยิงคำสั่ง EXIT (0 = ปิดการตรวจสอบ)
   max_exit_slippage_pct: 0.003
-  sell_scale_out: { chunks: 2, delay_seconds: 1, profit_only: true }
+  sell_scale_out: { chunks: 1, delay_seconds: 1, profit_only: true }
   binance:
     base_url: "https://api.binance.com"
     retry: { attempts: 4, backoff_sec: 0.5 }
