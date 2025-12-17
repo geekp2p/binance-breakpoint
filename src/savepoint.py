@@ -100,6 +100,7 @@ def state_to_payload(state: StrategyState) -> Dict[str, Any]:
         "scalp_anchor_price": state.scalp_anchor_price,
         "scalp_trades_done": state.scalp_trades_done,
         "scalp_positions": list(state.scalp_positions),
+        "scalp_cooldown_until_bar": state.scalp_cooldown_until_bar,
         "session_high": state.session_high,
         "session_low": state.session_low,
         "btd_armed": state.btd_armed,
@@ -152,6 +153,7 @@ def apply_payload_to_state(state: StrategyState, payload: Dict[str, Any]) -> Non
     state.scalp_anchor_price = payload.get("scalp_anchor_price", state.scalp_anchor_price)
     state.scalp_trades_done = int(payload.get("scalp_trades_done", state.scalp_trades_done))
     state.scalp_positions = list(payload.get("scalp_positions", state.scalp_positions))
+    state.scalp_cooldown_until_bar = int(payload.get("scalp_cooldown_until_bar", state.scalp_cooldown_until_bar))
     state.session_high = payload.get("session_high", state.session_high)
     state.session_low = payload.get("session_low", state.session_low)
     state.btd_armed = bool(payload.get("btd_armed", state.btd_armed))

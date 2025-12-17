@@ -87,6 +87,7 @@ class ScalpModeConf:
     volatility_ref_pct: float = 0.04
     scale_strength: float = 0.6
     order_pct_allocation: float = 0.33
+    cooldown_bars: int = 3
 
 # --- Micro oscillation scalp ---
 @dataclass
@@ -197,6 +198,7 @@ class StrategyState:
     scalp_anchor_price: Optional[float] = None
     scalp_trades_done: int = 0
     scalp_positions: List[Dict[str, float]] = field(default_factory=list)
+    scalp_cooldown_until_bar: int = 0
     session_high: Optional[float] = None
     session_low: Optional[float] = None
 
@@ -581,6 +583,17 @@ class StrategyState:
             return
         thresholds = self._scalp_thresholds()
         trigger = anchor * (1 - thresholds["drop_pct"])
+        if self.bar_index < self.scalp_cooldown_until_bar:
+            log_events.append({
+                "ts": ts,
+                "event": "SCALP_BUY_SKIPPED",
+                "reason": "COOLDOWN",
+                "trigger": trigger,
+                "drop_pct": thresholds["drop_pct"],
+                "take_profit_pct": thresholds["take_profit_pct"],
+                "cooldown_until_bar": self.scalp_cooldown_until_bar,
+            })
+            return
         if l > trigger:
             return
         order_quote = self._remaining_scalp_allocation()
@@ -610,6 +623,7 @@ class StrategyState:
             "target": target,
         })
         self.scalp_trades_done += 1
+        self.scalp_cooldown_until_bar = self.bar_index + max(1, int(self.scalp.cooldown_bars))
         log_events.append({
             "ts": ts,
             "event": "SCALP_BUY",
