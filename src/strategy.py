@@ -229,6 +229,7 @@ class StrategyState:
     micro_positions: List[Dict[str, float]] = field(default_factory=list)
     micro_last_exit_price: Optional[float] = None
     micro_loss_recovery_pct: float = 0.0
+    micro_reentry_scale: float = 1.0
     micro_tp_markup_pct: float = 0.0
 
     def _remaining_quote_allocation(self) -> float:
@@ -716,6 +717,13 @@ class StrategyState:
             "band_pct": band_pct,
             "ready": ready,
         }
+
+    def _micro_min_profit_pct(self) -> float:
+        return max(
+            getattr(self.micro, "min_profit_pct", 0.0),
+            self.fees_buy + self.fees_sell,
+            0.005,
+        )
     
     def _adjust_micro_tp_markup(
         self,
@@ -822,6 +830,8 @@ class StrategyState:
             base_reentry_pct = max(base_reentry_pct, atr_pct * self.micro.atr_reentry_mult)
         # Require an extra pullback to offset round-trip fees before re-entering
         reentry_drop_pct = min(base_reentry_pct + max(self.fees_buy + self.fees_sell, 0.0), 0.99)
+        reentry_scale = max(1.0, self.micro_reentry_scale)
+        reentry_drop_pct = min(reentry_drop_pct * reentry_scale, 0.99)
         
         if (
             self.micro_last_exit_price is not None
@@ -864,11 +874,7 @@ class StrategyState:
             tp_pct = min(tp_pct + self.micro_loss_recovery_pct, self.micro.loss_recovery_max_pct)
         tp_pct = tp_pct + min(self.micro_tp_markup_pct, getattr(self.micro, "tp_markup_max", float("inf")))
         break_even_price = cost / qty / max(1 - self.fees_sell, 1e-9)
-        min_profit_pct = max(
-            getattr(self.micro, "min_profit_pct", 0.0),
-            self.fees_buy + self.fees_sell,
-            0.005,
-        )
+        min_profit_pct = min(self._micro_min_profit_pct() * reentry_scale, 0.16)
         target = price * (1 + tp_pct)
         min_profit_price = break_even_price * (1 + min_profit_pct)
         if target < min_profit_price:
@@ -1038,6 +1044,15 @@ class StrategyState:
                     )
                 self.micro_last_exit_price = exit_price
                 self.micro_cooldown_until_bar = self.bar_index + max(1, int(self.micro.cooldown_bars))
+                min_profit_pct = min(
+                    self._micro_min_profit_pct() * max(1.0, self.micro_reentry_scale),
+                    0.16,
+                )
+                profit_pct = pnl / cost_share if cost_share > 0 else None
+                if pnl <= 0 or (profit_pct is not None and profit_pct < min_profit_pct):
+                    self.micro_reentry_scale = min(self.micro_reentry_scale * 2, 16.0)
+                else:
+                    self.micro_reentry_scale = 1.0
                 if self.micro.loss_recovery_enabled:
                     if pnl <= 0:
                         recovery = self.micro.loss_recovery_markup_pct
