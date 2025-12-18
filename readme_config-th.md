@@ -1,0 +1,141 @@
+ส่วน API (กุญแจเชื่อมต่อ)
+api.key, api.secret: ตัวแปรสภาพแวดล้อมสำหรับคีย์/ซีเคร็ต Binance (ไม่ใช่เปอร์เซ็นต์ เป็นสตริง).
+
+โครงสร้างคู่เทรด (ตัวอย่าง ZECUSDT)
+symbol: ZECUSDT, quote: USDT: คู่เทรดและสกุลโควต.
+
+b_alloc: 23456.0: งบประมาณสูงสุด (หน่วย USDT) ที่อนุญาตให้คู่ ZEC ใช้รวมทุกฟีเจอร์.
+
+source: binance: ใช้ดาต้าจาก Binance.
+
+interval: 1m: แท่งเทียน 1 นาที.
+
+lookback_days: 2: โหลดข้อมูลย้อนหลัง 2 วันเพื่อคำนวณสัญญาณ.
+
+fees: { taker: 0.001, maker: 0.001 }: ค่าธรรมเนียมเทรด 0.1% สำหรับทั้งฝั่ง taker/maker (ตัวเลขคือสัดส่วน ไม่ใช่เปอร์เซ็นต์; 0.001 = 0.1%).
+
+buy_ladder (บันไดสะสมหลัก)
+d_buy: 0.015: ระยะห่างราคาระหว่างขั้นซื้อ ~1.5% จากจุดยึดก่อนหน้า (1.5% = 0.015).
+
+m_buy: 1.5: ตัวคูณขนาดไม้ ถ้าถอยลงจะเพิ่มขนาด 1.5 เท่าของไม้ก่อนหน้า.
+
+n_steps: 10: จำนวนขั้นสูงสุดต่อรอบสะสม.
+
+spacing_mode: fibo, size_mode: fibonacci: ใช้สัดส่วน Fibonacci กำหนดจังหวะ/ขนาดระหว่างขั้น.
+
+gap_mode: multiplicative, gap_factor: 1.05: ระยะห่างขั้นถูกคูณเพิ่มทีละ 1.05 (โต ~5% ต่อขั้น).
+
+max_step_drop: 0.25: จำกัดการตกต่อขั้นไม่เกิน 25% ของราคาอ้างอิง.
+
+base_order_quote: 0.0: ไม่บังคับจำนวนเงินเปิดไม้แรก (ใช้การคำนวณภายใน).
+
+max_quote_per_leg / max_total_quote: 0.0 แปลว่าไม่ตั้งเพดานพิเศษต่อขา/ต่อรอบนอกจาก b_alloc.
+
+profit_trail (ลากกำไร)
+p_min: 0.02: เริ่มเปิด trailer เมื่อกำไรลอยตัว ≥ 2%.
+
+s1: 0.01: สโลปช่วงแรก 1% ใช้คำนวณจุดล็อกกำไร.
+
+m_step: 1.6: ตัวคูณชันของเส้น trail ต่อขั้น.
+
+tau: 0.7: ค่าหน่วงเวลาหรือความโค้งของเส้น trail.
+
+p_lock_base: 0.005 ถึง p_lock_max: 0.02: ช่วงล็อกกำไรพื้นฐาน 0.5% ถึงสูงสุด 2%.
+
+tau_min: 0.3: ค่าหน่วงต่ำสุดเมื่อราคาวิ่งแรง.
+
+no_loss_epsilon: 0.0005: กันเผื่อ 0.05% เหนือจุดคุ้มทุนเพื่อไม่ให้ขายขาดทุน.
+
+time_martingale (คุมเวลาในบันได)
+W1_minutes: 5: หน้าต่างเวลาพิจารณา 5 นาที.
+
+m_time: 2.0: ตัวคูณเวลา ถ้าตลาดนิ่งจะเพิ่มระยะห่าง/เวลา.
+
+delta_lock: 0.002: ล็อกกำไรเพิ่ม 0.2% ต่อช่วงเวลาที่กำหนด.
+
+beta_tau: 0.9: ลดความไวของ trailer ตามเวลา (90%).
+
+time_caps (เพดานเวลา)
+T_idle_max_minutes: 45: ถ้าไม่มีสถานะนานเกิน 45 นาที อาจเปิดไม้ใหม่ตามเงื่อนไข idle.
+
+p_idle: 0.008: ส่วนเพิ่มราคา/ส่วนลด 0.8% ใช้กับ logic idle.
+
+T_total_cap_minutes: 180: วงรอบสูงสุด 180 นาที ก่อนบังคับ exit.
+
+p_exit_min: 0.008: กำไรขั้นต่ำ 0.8% ที่ยอมรับตอนปิดด้วย time cap.
+
+features → scalp_mode (เข้าเร็ว-ออกเร็ว)
+max_trades: 10: จำนวน scalp สูงสุดต่อรอบ.
+
+base_drop_pct: 0.03 (3%), min_drop_pct: 0.02, max_drop_pct: 0.06: เงื่อนไขราคาลงแล้วค่อยยิง scalp buy.
+
+base_take_profit_pct: 0.01 (1%), min_take_profit_pct: 0.008, max_take_profit_pct: 0.02: เป้ากำไรสำหรับ scalp.
+
+volatility_ref_pct: 0.04 (4%): ใช้เป็น baseline ความผันผวน.
+
+scale_strength: 0.6: น้ำหนักการสเกลคำสั่งตามความผันผวน.
+
+order_pct_allocation: 0.33: ใช้งบ 33% ของวงเงินที่เหลือต่อคำสั่ง scalp.
+
+cooldown_bars: 3: รอ 3 แท่ง (3 นาที) ก่อน scalp อีกครั้ง.
+
+features → micro_oscillation (ไมโครสวิงที่ปรับใหม่)
+window: 45: ใช้แท่งเทียน 45 แท่ง (45 นาที) คำนวณ band.
+
+max_band_pct: 0.008 (0.8%): ความกว้างแถบสูงสุดเพื่อมองหา oscillation.
+
+min_swings: 5: ต้องมีสวิงอย่างน้อย 5 ครั้งในหน้าต่าง.
+
+min_swing_pct: 0.0012 (0.12%): ระยะสวิงขั้นต่ำที่ยอมรับต่อขา.
+
+entry_band_pct: 0.18 (18% ของความกว้าง band) ใช้กำหนดโซนเข้า.
+
+take_profit_pct: 0.003 (0.3%): เป้ากำไรไมโครต่อไม้.
+
+stop_break_pct: 0.0035 (0.35%): จุดตัดขาดทุนไมโคร.
+
+min_profit_pct: 0.0025 (0.25%): กำไรขั้นต่ำเหนือจุดคุ้มทุนหลังหักค่าธรรมเนียมก่อนยอมปิด.
+
+volatility_stop_mult: 1.0, volatility_take_profit_mult: 0.7, volatility_reentry_mult: 0.9: ตัวคูณความผันผวนปรับ stop/TP/re-entry ให้ยืดหยุ่นตามตลาด.
+
+order_pct_allocation: 0.12: ใช้ 12% ของวงเงินที่เหลือต่อคำสั่งไมโคร (ลดลงจาก 15% เดิม เพื่อลด churn).
+
+cooldown_bars: 8: รอ 8 แท่ง (8 นาที) หลังจบไมโครเทรดก่อนเข้าใหม่.
+
+min_exit_qty: 0.0: ไม่กำหนดขั้นต่ำปริมาณขายออก.
+
+features → buy_the_dip / sell_at_height / adaptive_ladder / anchor_drift
+buy_the_dip: ซื้อเมื่อหลุดลงลึกเกิน dip_threshold: 0.05 (5%) แล้วรีบาวด์อย่างน้อย rebound_min: 0.004 (0.4%) ถึง rebound_max: 0.02 (2%); จำกัด cooldown 10 นาที, สั่งได้สูงสุด 7 ไม้, ใช้งบที่เหลือ 50% (order_pct_remaining: 0.5), ส่ง limit เบี่ยงราคา 0.1% (limit_offset: 0.001), แยกจาก ladder หลัก (isolate_from_ladder: true).
+
+sell_at_height: ขายเมื่อยืดขึ้นเกิน height_threshold: 0.04 (4%) แล้วดึงกลับ pullback_min: 0.004 ถึง pullback_max: 0.02 (0.4–2%); ใช้ 50% ของ position (order_pct_position: 0.5), limit เบี่ยง 0.1%, cooldown 10 นาที.
+
+adaptive_ladder: ปรับ d_buy อัตโนมัติหลัง bootstrap 3 ขั้น; ค่าต่ำสุด/สูงสุดของ d_buy = 2–8%, ใช้หน้าต่าง volatility 120 แท่ง, ความไว 0.6, rebalance เมื่อเบี่ยง ≥0.1%.
+
+anchor_drift: ตรวจโครงสร้างราคา 40 แท่ง, ATR 14; breakout เมื่อ ATR*1.2 หรือเคลื่อนที่เกิน 0.5 ATR หรือ ≥0.5% พร้อม dwell 15 แท่ง; stable band 1%; cooldown 20 แท่ง.
+
+plotting
+plotting: { enable: true }: เปิดสร้างกราฟ/บันทึกภาพผลการรัน.
+
+ส่วน general (ใช้ทุกคู่)
+snapshot_every_bars: 1: บันทึก snapshot ทุกแท่ง.
+
+use_maker: true: พยายามใช้คำสั่ง maker (ลดค่าธรรมเนียม).
+
+max_exit_slippage_pct: 0.003: อนุญาต slippage ตอน EXIT สูงสุด 0.3%; 0 = ปิดการตรวจสอบ.
+
+sell_scale_out: { chunks: 1, delay_seconds: 1, profit_only: true }: ขายออกทีเดียว (1 ชิ้น), หน่วง 1 วินาที, ทำเฉพาะเมื่อมีกำไร.
+
+binance.base_url, retry, save_csv, data_dir: ตั้งค่าการเรียก API/บันทึกข้อมูล.
+
+bnb_fee_discount: true, fee_discount_factor: 1.0: ใช้จ่าย fee ด้วย BNB เพื่อรับส่วนลด (ตัวคูณ 1.0 = ใช้อัตราส่วนลดปกติของ Binance).
+
+profit_recycling.enabled: false: ปิดการนำกำไรกลับเข้าซื้อ; ถ้าเปิดจะกันกำไร 10% (discount_allocation_pct: 0.1) ไปซื้อเหรียญ discount และ 5% (bnb_allocation_pct: 0.05) ไปซื้อ BNB ลด fee; min_order_quote: 10.0 คือขั้นต่ำการยิงคำสั่ง (หน่วย USDT).
+
+ตัวอย่างตีความสั้น ๆ (ไมโคร ZEC)
+เข้าไมโครได้เมื่อมีอย่างน้อย 5 สวิงใน 45 นาที และสวิงแต่ละครั้งกว้าง ≥0.12% ภายใน band กว้างไม่เกิน 0.8%.
+
+เป้าไมโครกำไร 0.3% ต่อไม้, ตัดขาดทุน ~0.35%, ต้องเหลือกำไรจริงหลังค่าธรรมเนียม ≥0.25% ก่อนจะยอมปิด.
+
+ใช้เงินต่อไมโครเพียง 12% ของงบที่เหลือ และเว้นช่วง 8 แท่งก่อนเข้าไมโครรอบใหม่.
+
+หากต้องการอธิบายบล็อกอื่น (เช่น DCR/BNB/DGB/KITE/TWT) ให้เหมือน ZEC แต่ b_alloc ต่างกัน; พารามิเตอร์ที่เหลือเหมือนกันในไฟล์นี้.

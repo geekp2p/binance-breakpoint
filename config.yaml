@@ -24,7 +24,7 @@ pairs:
       size_mode: fibonacci
       gap_mode: multiplicative
       gap_factor: 1.05
-      max_step_drop: 0.25
+      max_step_drop: 0.3
       base_order_quote: 0.0
       max_quote_per_leg: 0.0
       max_total_quote: 0.0
@@ -37,7 +37,7 @@ pairs:
       p_lock_base: 0.005
       p_lock_max: 0.02
       tau_min: 0.3
-      no_loss_epsilon: 0.0005
+      no_loss_epsilon: 0.0018
 
     time_martingale:
       W1_minutes: 5
@@ -58,7 +58,7 @@ pairs:
         # max_trades = จำนวนไม้ scalp ต่อรอบ (ตั้ง 10 เพื่อเกิน 3 ไม้เดิม)
         max_trades: 10
         base_drop_pct: 0.03
-        min_drop_pct: 0.02
+        min_drop_pct: 0.015
         max_drop_pct: 0.06
         base_take_profit_pct: 0.01
         min_take_profit_pct: 0.008
@@ -69,20 +69,20 @@ pairs:
         cooldown_bars: 3
       micro_oscillation:
         enabled: true
-        window: 30
-        max_band_pct: 0.006
-        min_swings: 4
-        min_swing_pct: 0.0008
-        entry_band_pct: 0.15
-        take_profit_pct: 0.0025
-        stop_break_pct: 0.005
+        window: 45
+        max_band_pct: 0.008
+        min_swings: 5
+        min_swing_pct: 0.0012
+        entry_band_pct: 0.18
+        take_profit_pct: 0.003
+        stop_break_pct: 0.0035
         # Minimum margin above break-even (after fees) for micro exits
-        min_profit_pct: 0.002
-        volatility_stop_mult: 0.9
-        volatility_take_profit_mult: 0.6
-        volatility_reentry_mult: 0.8
-        order_pct_allocation: 0.15
-        cooldown_bars: 5
+        min_profit_pct: 0.0025
+        volatility_stop_mult: 1.0
+        volatility_take_profit_mult: 0.7
+        volatility_reentry_mult: 0.9
+        order_pct_allocation: 0.12
+        cooldown_bars: 8
         min_exit_qty: 0.0
       buy_the_dip:
         # เปิดซื้อดักหลุดบันได (dip) แยกจาก n_steps หลัก
@@ -152,7 +152,7 @@ pairs:
       size_mode: fibonacci
       gap_mode: multiplicative
       gap_factor: 1.05
-      max_step_drop: 0.25
+      max_step_drop: 0.3
       base_order_quote: 0.0
       max_quote_per_leg: 0.0
       max_total_quote: 0.0
@@ -165,7 +165,7 @@ pairs:
       p_lock_base: 0.005
       p_lock_max: 0.02
       tau_min: 0.3
-      no_loss_epsilon: 0.0005
+      no_loss_epsilon: 0.0018
 
     time_martingale:
       W1_minutes: 5
@@ -186,7 +186,7 @@ pairs:
         # max_trades = จำนวนไม้ scalp ต่อรอบ (ตั้ง 10 เพื่อเกิน 3 ไม้เดิม)
         max_trades: 10
         base_drop_pct: 0.03
-        min_drop_pct: 0.02
+        min_drop_pct: 0.015
         max_drop_pct: 0.06
         base_take_profit_pct: 0.01
         min_take_profit_pct: 0.008
@@ -197,20 +197,20 @@ pairs:
         cooldown_bars: 3
       micro_oscillation:
         enabled: true
-        window: 30
-        max_band_pct: 0.006
-        min_swings: 4
-        min_swing_pct: 0.0008
-        entry_band_pct: 0.15
-        take_profit_pct: 0.0025
-        stop_break_pct: 0.005
+        window: 45
+        max_band_pct: 0.008
+        min_swings: 5
+        min_swing_pct: 0.0012
+        entry_band_pct: 0.18
+        take_profit_pct: 0.003
+        stop_break_pct: 0.0035
         # Minimum margin above break-even (after fees) for micro exits
-        min_profit_pct: 0.002
-        volatility_stop_mult: 0.9
-        volatility_take_profit_mult: 0.6
-        volatility_reentry_mult: 0.8
-        order_pct_allocation: 0.15
-        cooldown_bars: 5
+        min_profit_pct: 0.0025
+        volatility_stop_mult: 1.0
+        volatility_take_profit_mult: 0.7
+        volatility_reentry_mult: 0.9
+        order_pct_allocation: 0.12
+        cooldown_bars: 8
         min_exit_qty: 0.0
       buy_the_dip:
         # เปิดซื้อดักหลุดบันได (dip) แยกจาก n_steps หลัก
@@ -280,7 +280,7 @@ pairs:
       size_mode: fibonacci
       gap_mode: multiplicative
       gap_factor: 1.05
-      max_step_drop: 0.25
+      max_step_drop: 0.3
       base_order_quote: 0.0
       max_quote_per_leg: 0.0
       max_total_quote: 0.0
@@ -293,7 +293,7 @@ pairs:
       p_lock_base: 0.005
       p_lock_max: 0.02
       tau_min: 0.3
-      no_loss_epsilon: 0.0005
+      no_loss_epsilon: 0.0018
 
     time_martingale:
       W1_minutes: 5
@@ -314,7 +314,7 @@ pairs:
         # max_trades = จำนวนไม้ scalp ต่อรอบ (ตั้ง 10 เพื่อเกิน 3 ไม้เดิม)
         max_trades: 10
         base_drop_pct: 0.03
-        min_drop_pct: 0.02
+        min_drop_pct: 0.015
         max_drop_pct: 0.06
         base_take_profit_pct: 0.01
         min_take_profit_pct: 0.008
@@ -325,20 +325,20 @@ pairs:
         cooldown_bars: 3
       micro_oscillation:
         enabled: true
-        window: 30
-        max_band_pct: 0.006
-        min_swings: 4
-        min_swing_pct: 0.0008
-        entry_band_pct: 0.15
-        take_profit_pct: 0.0025
-        stop_break_pct: 0.005
+        window: 45
+        max_band_pct: 0.008
+        min_swings: 5
+        min_swing_pct: 0.0012
+        entry_band_pct: 0.18
+        take_profit_pct: 0.003
+        stop_break_pct: 0.0035
         # Minimum margin above break-even (after fees) for micro exits
-        min_profit_pct: 0.002
-        volatility_stop_mult: 0.9
-        volatility_take_profit_mult: 0.6
-        volatility_reentry_mult: 0.8
-        order_pct_allocation: 0.15
-        cooldown_bars: 5
+        min_profit_pct: 0.0025
+        volatility_stop_mult: 1.0
+        volatility_take_profit_mult: 0.7
+        volatility_reentry_mult: 0.9
+        order_pct_allocation: 0.12
+        cooldown_bars: 8
         min_exit_qty: 0.0
       buy_the_dip:
         # เปิดซื้อดักหลุดบันได (dip) แยกจาก n_steps หลัก
@@ -408,7 +408,7 @@ pairs:
       size_mode: fibonacci
       gap_mode: multiplicative
       gap_factor: 1.05
-      max_step_drop: 0.25
+      max_step_drop: 0.3
       base_order_quote: 0.0
       max_quote_per_leg: 0.0
       max_total_quote: 0.0
@@ -421,7 +421,7 @@ pairs:
       p_lock_base: 0.005
       p_lock_max: 0.02
       tau_min: 0.3
-      no_loss_epsilon: 0.0005
+      no_loss_epsilon: 0.0018
 
     time_martingale:
       W1_minutes: 5
@@ -442,7 +442,7 @@ pairs:
         # max_trades = จำนวนไม้ scalp ต่อรอบ (ตั้ง 10 เพื่อเกิน 3 ไม้เดิม)
         max_trades: 10
         base_drop_pct: 0.03
-        min_drop_pct: 0.02
+        min_drop_pct: 0.015
         max_drop_pct: 0.06
         base_take_profit_pct: 0.01
         min_take_profit_pct: 0.008
@@ -453,20 +453,20 @@ pairs:
         cooldown_bars: 3
       micro_oscillation:
         enabled: true
-        window: 30
-        max_band_pct: 0.006
-        min_swings: 4
-        min_swing_pct: 0.0008
-        entry_band_pct: 0.15
-        take_profit_pct: 0.0025
-        stop_break_pct: 0.005
+        window: 45
+        max_band_pct: 0.008
+        min_swings: 5
+        min_swing_pct: 0.0012
+        entry_band_pct: 0.18
+        take_profit_pct: 0.003
+        stop_break_pct: 0.0035
         # Minimum margin above break-even (after fees) for micro exits
-        min_profit_pct: 0.002
-        volatility_stop_mult: 0.9
-        volatility_take_profit_mult: 0.6
-        volatility_reentry_mult: 0.8
-        order_pct_allocation: 0.15
-        cooldown_bars: 5
+        min_profit_pct: 0.0025
+        volatility_stop_mult: 1.0
+        volatility_take_profit_mult: 0.7
+        volatility_reentry_mult: 0.9
+        order_pct_allocation: 0.12
+        cooldown_bars: 8
         min_exit_qty: 0.0
       buy_the_dip:
         # เปิดซื้อดักหลุดบันได (dip) แยกจาก n_steps หลัก
@@ -536,7 +536,7 @@ pairs:
       size_mode: fibonacci
       gap_mode: multiplicative
       gap_factor: 1.05
-      max_step_drop: 0.25
+      max_step_drop: 0.3
       base_order_quote: 0.0
       max_quote_per_leg: 0.0
       max_total_quote: 0.0
@@ -549,7 +549,7 @@ pairs:
       p_lock_base: 0.005
       p_lock_max: 0.02
       tau_min: 0.3
-      no_loss_epsilon: 0.0005
+      no_loss_epsilon: 0.0018
 
     time_martingale:
       W1_minutes: 5
@@ -570,7 +570,7 @@ pairs:
         # max_trades = จำนวนไม้ scalp ต่อรอบ (ตั้ง 10 เพื่อเกิน 3 ไม้เดิม)
         max_trades: 10
         base_drop_pct: 0.03
-        min_drop_pct: 0.02
+        min_drop_pct: 0.015
         max_drop_pct: 0.06
         base_take_profit_pct: 0.01
         min_take_profit_pct: 0.008
@@ -581,20 +581,20 @@ pairs:
         cooldown_bars: 3
       micro_oscillation:
         enabled: true
-        window: 30
-        max_band_pct: 0.006
-        min_swings: 4
-        min_swing_pct: 0.0008
-        entry_band_pct: 0.15
-        take_profit_pct: 0.0025
-        stop_break_pct: 0.005
+        window: 45
+        max_band_pct: 0.008
+        min_swings: 5
+        min_swing_pct: 0.0012
+        entry_band_pct: 0.18
+        take_profit_pct: 0.003
+        stop_break_pct: 0.0035
         # Minimum margin above break-even (after fees) for micro exits
-        min_profit_pct: 0.002
-        volatility_stop_mult: 0.9
-        volatility_take_profit_mult: 0.6
-        volatility_reentry_mult: 0.8
-        order_pct_allocation: 0.15
-        cooldown_bars: 5
+        min_profit_pct: 0.0025
+        volatility_stop_mult: 1.0
+        volatility_take_profit_mult: 0.7
+        volatility_reentry_mult: 0.9
+        order_pct_allocation: 0.12
+        cooldown_bars: 8
         min_exit_qty: 0.0
       buy_the_dip:
         # เปิดซื้อดักหลุดบันได (dip) แยกจาก n_steps หลัก
@@ -665,7 +665,7 @@ pairs:
       size_mode: fibonacci
       gap_mode: multiplicative
       gap_factor: 1.05
-      max_step_drop: 0.25
+      max_step_drop: 0.3
       base_order_quote: 0.0
       max_quote_per_leg: 0.0
       max_total_quote: 0.0
@@ -678,7 +678,7 @@ pairs:
       p_lock_base: 0.005
       p_lock_max: 0.02
       tau_min: 0.3
-      no_loss_epsilon: 0.0005
+      no_loss_epsilon: 0.0018
 
     time_martingale:
       W1_minutes: 5
@@ -699,7 +699,7 @@ pairs:
         # max_trades = จำนวนไม้ scalp ต่อรอบ (ตั้ง 10 เพื่อเกิน 3 ไม้เดิม)
         max_trades: 10
         base_drop_pct: 0.03
-        min_drop_pct: 0.02
+        min_drop_pct: 0.015
         max_drop_pct: 0.06
         base_take_profit_pct: 0.01
         min_take_profit_pct: 0.008
@@ -710,20 +710,20 @@ pairs:
         cooldown_bars: 3
       micro_oscillation:
         enabled: true
-        window: 30
-        max_band_pct: 0.006
-        min_swings: 4
-        min_swing_pct: 0.0008
-        entry_band_pct: 0.15
-        take_profit_pct: 0.0025
-        stop_break_pct: 0.005
+        window: 45
+        max_band_pct: 0.008
+        min_swings: 5
+        min_swing_pct: 0.0012
+        entry_band_pct: 0.18
+        take_profit_pct: 0.003
+        stop_break_pct: 0.0035
         # Minimum margin above break-even (after fees) for micro exits
-        min_profit_pct: 0.002
-        volatility_stop_mult: 0.9
-        volatility_take_profit_mult: 0.6
-        volatility_reentry_mult: 0.8
-        order_pct_allocation: 0.15
-        cooldown_bars: 5
+        min_profit_pct: 0.0025
+        volatility_stop_mult: 1.0
+        volatility_take_profit_mult: 0.7
+        volatility_reentry_mult: 0.9
+        order_pct_allocation: 0.12
+        cooldown_bars: 8
         min_exit_qty: 0.0
       buy_the_dip:
         # เปิดซื้อดักหลุดบันได (dip) แยกจาก n_steps หลัก
