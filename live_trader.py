@@ -937,11 +937,13 @@ def main() -> None:
 
             record_history(ev)
             ladder_qty, ladder_cost = ladder_position()
+            _, micro_cost_basis = micro_position_totals()
             logging.debug(
-                "Micro exit completed without touching ladder ledger (idx=%s, ladder_qty=%.6f, ladder_cost=%.2f)",
+                "Micro exit completed without touching ladder ledger (idx=%s, ladder_qty=%.6f, ladder_cost=%.2f, micro_cost_basis=%.2f)",
                 state.ladder_next_idx,
                 ladder_qty,
                 ladder_cost,
+                micro_cost_basis,
             )
 
         def clamp_buy_to_available(
@@ -1048,15 +1050,16 @@ def main() -> None:
         def refresh_stash_snapshot() -> Dict[str, object]:
             nonlocal stash_snapshot
             reserves = profit_allocator.reserves_snapshot(discount_symbol)
-            stash_snapshot = reserves.get("discount_holdings") or {}
+            stash_snapshot = profit_allocator.discount_holdings_snapshot(discount_symbol)
             return reserves
 
-        def stash_adjustments() -> tuple[float, float]:
+        def stash_totals() -> tuple[float, float]:
             if not stash_snapshot:
                 refresh_stash_snapshot()
-            qty = 0.0
-            cost = 0.0
             if isinstance(stash_snapshot, dict):
+                stash_symbol = str(stash_snapshot.get("symbol") or "").upper()
+                if stash_symbol and stash_symbol not in {pair_symbol.upper(), base_asset or ""}:
+                    return 0.0, 0.0
                 try:
                     qty = float(stash_snapshot.get("holdings_qty", 0.0))
                 except (TypeError, ValueError):
@@ -1065,7 +1068,8 @@ def main() -> None:
                     cost = float(stash_snapshot.get("quote_spent", 0.0))
                 except (TypeError, ValueError):
                     cost = 0.0
-            return qty, cost
+                return qty, cost
+            return 0.0, 0.0
 
         def rollback_failed_sah(ev: Dict[str, object], ts: datetime, exc: Exception) -> None:
             qty = float(ev.get("qty") or ev.get("order_qty") or 0.0)
@@ -1090,11 +1094,15 @@ def main() -> None:
                 }
             )
 
-        def ladder_position() -> tuple[float, float]:
+        def micro_position_totals() -> tuple[float, float]:
             micro_totals = state._micro_totals()
             micro_qty = max(micro_totals.get("qty", 0.0), 0.0)
             micro_cost = max(micro_totals.get("cost", 0.0), 0.0)
-            stash_qty, stash_cost = stash_adjustments()
+            return micro_qty, micro_cost
+
+        def ladder_position() -> tuple[float, float]:
+            micro_qty, micro_cost = micro_position_totals()
+            stash_qty, stash_cost = stash_totals()
             qty = max(state.Q - baseline_qty - micro_qty - stash_qty, 0.0)
             cost = max(state.C - baseline_cost - micro_cost - stash_cost, 0.0)
             # Avoid reporting a cost when there is no position (can happen if cost
@@ -1118,15 +1126,14 @@ def main() -> None:
             if total_cost > 0:
                 micro_ratio = micro_cost / total_cost
             elif state.Q > 0:
-                micro_ratio = min(max(state._micro_totals().get("qty", 0.0) / state.Q, 0.0), 1.0)
+                micro_qty, _ = micro_position_totals()
+                micro_ratio = min(max(micro_qty / state.Q, 0.0), 1.0)
             micro_share = realized_pnl * micro_ratio
             ladder_share = realized_pnl - micro_share
             return ladder_share, micro_share
 
         def compute_pnl_breakdown(current_price: float) -> Dict[str, Dict[str, float]]:
-            micro_totals = state._micro_totals()
-            micro_qty = max(micro_totals.get("qty", 0.0), 0.0)
-            micro_cost = max(micro_totals.get("cost", 0.0), 0.0)
+            micro_qty, micro_cost = micro_position_totals()
             ladder_qty, ladder_cost = ladder_position()
             ladder_unrealized = (
                 ladder_qty * current_price * (1 - state.fees_sell) - ladder_cost if ladder_qty > 0 else 0.0
@@ -1164,18 +1171,19 @@ def main() -> None:
         def build_status_snapshot(current_price: float, ts: datetime) -> Dict[str, object]:
             nonlocal stash_snapshot
             reserves = refresh_stash_snapshot()
-            stash_qty, stash_cost = stash_adjustments()
-            net_qty, net_cost = ladder_position()
-            profit_allocator.set_trading_position_active(pair_symbol, net_qty > 0)
+            stash_qty, stash_cost = stash_totals()
+            ladder_qty, ladder_cost = ladder_position()
+            micro_qty_total, micro_cost_total = micro_position_totals()
+            profit_allocator.set_trading_position_active(pair_symbol, ladder_qty > 0 or micro_qty_total > 0)
             p_be = None
-            if net_qty > 0:
-                p_be = net_cost / (net_qty * (1 - state.fees_sell))
+            if ladder_qty > 0:
+                p_be = ladder_cost / (ladder_qty * (1 - state.fees_sell))
             floor_price = state.floor_price(p_be) if p_be is not None else None
-            avg_price = (net_cost / net_qty) if net_qty > 0 else None
+            avg_price = (ladder_cost / ladder_qty) if ladder_qty > 0 else None
             unrealized_pnl = None
-            if net_qty > 0:
-                proceeds = current_price * net_qty * (1 - state.fees_sell)
-                unrealized_pnl = proceeds - net_cost
+            if ladder_qty > 0:
+                proceeds = current_price * ladder_qty * (1 - state.fees_sell)
+                unrealized_pnl = proceeds - ladder_cost
             realized_pnl = realized_pnl_total
             pnl_breakdown = compute_pnl_breakdown(current_price)
             pnl_total = realized_pnl_total + (unrealized_pnl or 0.0)
@@ -1191,7 +1199,7 @@ def main() -> None:
             )
             ladder_total = len(state.ladder_prices)
             ladder_progress = state.ladder_next_idx
-            if net_qty <= 0 and net_cost <= 0:
+            if ladder_qty <= 0 and ladder_cost <= 0:
                 ladder_progress = 0
             ladder_progress = min(max(ladder_progress, 0), ladder_total)
             ladder_legs: List[Dict[str, object]] = []
@@ -1221,6 +1229,10 @@ def main() -> None:
                     )
             micro_position_qty = sum(float(pos.get("qty", 0.0)) for pos in state.micro_positions)
             micro_position_cost = sum(float(pos.get("cost", 0.0)) for pos in state.micro_positions)
+            if micro_position_qty <= 0 and micro_qty_total > 0:
+                micro_position_qty = micro_qty_total
+            if micro_position_cost <= 0 and micro_cost_total > 0:
+                micro_position_cost = micro_cost_total
             micro_targets = [float(pos.get("target", 0.0)) for pos in state.micro_positions if pos.get("target")]
             micro_stops = [float(pos.get("stop", 0.0)) for pos in state.micro_positions if pos.get("stop")]
             micro_next_sell = min(micro_targets) if micro_targets else None
@@ -1232,7 +1244,7 @@ def main() -> None:
                 micro_state = "ready_to_buy"
 
             next_sell_target = None
-            if net_qty > 0:
+            if ladder_qty > 0:
                 if state.phase == PHASE_TRAIL:
                     next_sell_target = floor_price
                 else:
@@ -1245,8 +1257,8 @@ def main() -> None:
                 "price": current_price,
                 "phase": state.phase,
                 "stage": state.stage,
-                "qty": net_qty,
-                "quote_spent": net_cost,
+                "qty": ladder_qty,
+                "quote_spent": ladder_cost,
                 "avg_price": avg_price,
                 "p_be": p_be,
                 "floor_price": floor_price,
@@ -1701,11 +1713,9 @@ def main() -> None:
             cost_share = state.C * (executed_qty / qty) if qty > 0 else 0.0
             realized_pnl = net_proceeds - cost_share
 
-            micro_totals = state._micro_totals()
-            ladder_cost = max(state.C - micro_totals.get("cost", 0.0), 0.0)
-            ladder_pnl, micro_pnl = split_realized_pnl(
-                realized_pnl, micro_totals.get("cost", 0.0), ladder_cost
-            )
+            _, micro_cost = micro_position_totals()
+            ladder_cost = max(state.C - micro_cost, 0.0)
+            ladder_pnl, micro_pnl = split_realized_pnl(realized_pnl, micro_cost, ladder_cost)
 
             state.Q = max(state.Q - executed_qty, 0.0)
             state.C = max(state.C - cost_share, 0.0)
@@ -1876,11 +1886,9 @@ def main() -> None:
                         proceeds_net = proceeds_gross * (1 - state.fees_sell)
                         realized_pnl = proceeds_net - cost_share
 
-                        micro_totals = state._micro_totals()
-                        ladder_cost = max(state.C - micro_totals.get("cost", 0.0), 0.0)
-                        ladder_pnl, micro_pnl = split_realized_pnl(
-                            realized_pnl, micro_totals.get("cost", 0.0), ladder_cost
-                        )
+                        _, micro_cost = micro_position_totals()
+                        ladder_cost = max(state.C - micro_cost, 0.0)
+                        ladder_pnl, micro_pnl = split_realized_pnl(realized_pnl, micro_cost, ladder_cost)
 
                         state.Q = max(prev_qty - executed_qty, 0.0)
                         state.C = max(state.C - cost_share, 0.0)

@@ -79,6 +79,17 @@ class ProfitAllocator:
             if isinstance(pool, dict):
                 self._cache_discount_holdings_locked(sym, pool)
 
+    def discount_holdings_snapshot(self, symbol: str) -> Dict[str, float]:
+        key = symbol.upper() if symbol else ""
+        with self._lock:
+            cached = self._discount_holdings_cache.get(key)
+            if cached:
+                return dict(cached)
+            if not key:
+                return {"symbol": None, "holdings_qty": 0.0, "quote_spent": 0.0}
+            pool = self._pool_locked(key)
+            return self._cache_discount_holdings_locked(key, pool)
+
     def set_trading_position_active(self, symbol: str, active: bool) -> None:
         key = symbol.upper()
         with self._lock:
@@ -351,6 +362,7 @@ class ProfitAllocator:
             pool = self._pool_locked(symbol)
             pool["holdings_qty"] = float(pool.get("holdings_qty", 0.0)) + executed_qty
             pool["quote_spent"] = float(pool.get("quote_spent", 0.0)) + pending
+            self._cache_discount_holdings_locked(symbol, pool)
             event = {
                 "ts": datetime.now(timezone.utc).isoformat(),
                 "event": "DISCOUNT_BUY",
@@ -464,6 +476,7 @@ class ProfitAllocator:
         with self._lock:
             pool = self._pool_locked(symbol)
             pool["holdings_qty"] = max(float(pool.get("holdings_qty", 0.0)) - executed_qty, 0.0)
+            self._cache_discount_holdings_locked(symbol, pool)
             event = {
                 "ts": datetime.now(timezone.utc).isoformat(),
                 "event": "RIP_SELL",
