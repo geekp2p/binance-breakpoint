@@ -934,6 +934,13 @@ def main() -> None:
                 )
 
             record_history(ev)
+            ladder_qty, ladder_cost = ladder_position()
+            logging.debug(
+                "Micro exit completed without touching ladder ledger (idx=%s, ladder_qty=%.6f, ladder_cost=%.2f)",
+                state.ladder_next_idx,
+                ladder_qty,
+                ladder_cost,
+            )
 
         def clamp_buy_to_available(
             ev: Dict[str, object],
@@ -1059,14 +1066,20 @@ def main() -> None:
                 }
             )
 
-        def net_position() -> tuple[float, float]:
-            qty = max(state.Q - baseline_qty, 0.0)
-            cost = max(state.C - baseline_cost, 0.0)
+        def ladder_position() -> tuple[float, float]:
+            micro_totals = state._micro_totals()
+            micro_qty = max(micro_totals.get("qty", 0.0), 0.0)
+            micro_cost = max(micro_totals.get("cost", 0.0), 0.0)
+            qty = max(state.Q - baseline_qty - micro_qty, 0.0)
+            cost = max(state.C - baseline_cost - micro_cost, 0.0)
             # Avoid reporting a cost when there is no position (can happen if cost
             # bookkeeping drifts slightly after a full exit).
             if qty <= 0:
                 return 0.0, 0.0
             return qty, cost
+
+        def net_position() -> tuple[float, float]:
+            return ladder_position()
 
         def update_realized_pnl(*, ladder_delta: float = 0.0, micro_delta: float = 0.0) -> None:
             nonlocal realized_pnl_total
@@ -1089,8 +1102,7 @@ def main() -> None:
             micro_totals = state._micro_totals()
             micro_qty = max(micro_totals.get("qty", 0.0), 0.0)
             micro_cost = max(micro_totals.get("cost", 0.0), 0.0)
-            ladder_qty = max(state.Q - baseline_qty - micro_qty, 0.0)
-            ladder_cost = max(state.C - baseline_cost - micro_cost, 0.0)
+            ladder_qty, ladder_cost = ladder_position()
             ladder_unrealized = (
                 ladder_qty * current_price * (1 - state.fees_sell) - ladder_cost if ladder_qty > 0 else 0.0
             )
@@ -1125,7 +1137,7 @@ def main() -> None:
             }
 
         def build_status_snapshot(current_price: float, ts: datetime) -> Dict[str, object]:
-            net_qty, net_cost = net_position()
+            net_qty, net_cost = ladder_position()
             p_be = None
             if net_qty > 0:
                 p_be = net_cost / (net_qty * (1 - state.fees_sell))
@@ -1191,7 +1203,7 @@ def main() -> None:
                 micro_state = "ready_to_buy"
 
             next_sell_target = None
-            if state.Q > 0:
+            if net_qty > 0:
                 if state.phase == PHASE_TRAIL:
                     next_sell_target = floor_price
                 else:
