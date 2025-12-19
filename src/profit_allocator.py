@@ -23,6 +23,7 @@ class ProfitRecycleConfig:
     bnb_symbol: str = "BNBUSDT"
     accumulation_filename: str = "profit_accumulation.json"
     rip_sell_fraction: float = 0.5
+    allow_during_active_position: bool = False
 
     @classmethod
     def from_dict(cls, raw: Dict[str, object]) -> "ProfitRecycleConfig":
@@ -35,6 +36,7 @@ class ProfitRecycleConfig:
             bnb_symbol=str(raw.get("bnb_symbol", "BNBUSDT")),
             accumulation_filename=str(raw.get("accumulation_filename", "profit_accumulation.json")),
             rip_sell_fraction=float(raw.get("rip_sell_fraction", 0.5)),
+            allow_during_active_position=bool(raw.get("allow_during_active_position", False)),
         )
 
 
@@ -45,6 +47,8 @@ class ProfitAllocator:
         self.config = config
         self._lock = Lock()
         self.path = Path(savepoint_dir) / self.config.accumulation_filename
+        self._active_positions: Dict[str, bool] = {}
+        self._discount_holdings_cache: Dict[str, Dict[str, float]] = {}
         self.state: Dict[str, object] = {
             "discount_pools": {},  # symbol -> {pending_quote, holdings_qty, quote_spent}
             "bnb_pending_quote": 0.0,
@@ -58,6 +62,33 @@ class ProfitAllocator:
         }
         self._load()
 
+    def _cache_discount_holdings_locked(self, symbol: str, pool: Dict[str, float]) -> Dict[str, float]:
+        snap = {
+            "symbol": symbol or None,
+            "holdings_qty": float(pool.get("holdings_qty", 0.0)),
+            "quote_spent": float(pool.get("quote_spent", 0.0)),
+        }
+        self._discount_holdings_cache[symbol] = snap
+        return snap
+
+    def _refresh_holdings_cache_locked(self) -> None:
+        pools = self.state.get("discount_pools", {})
+        if not isinstance(pools, dict):
+            return
+        for sym, pool in pools.items():
+            if isinstance(pool, dict):
+                self._cache_discount_holdings_locked(sym, pool)
+
+    def set_trading_position_active(self, symbol: str, active: bool) -> None:
+        key = symbol.upper()
+        with self._lock:
+            self._active_positions[key] = active
+
+    def _is_trading_active(self, symbol: str) -> bool:
+        key = symbol.upper()
+        with self._lock:
+            return bool(self._active_positions.get(key, False))
+
     def _load(self) -> None:
         if not self.path.exists():
             return
@@ -66,6 +97,8 @@ class ProfitAllocator:
                 data = json.load(fh)
                 if isinstance(data, dict):
                     self.state.update(data)
+            with self._lock:
+                self._refresh_holdings_cache_locked()
         except (OSError, json.JSONDecodeError) as exc:
             logging.warning("Unable to load profit accumulation file %s: %s", self.path, exc)
 
@@ -195,6 +228,11 @@ class ProfitAllocator:
         symbol = discount_symbol.upper() if discount_symbol else ""
         with self._lock:
             pool = self._pool_locked(symbol) if symbol else {"pending_quote": 0.0, "holdings_qty": 0.0, "quote_spent": 0.0}
+            holdings = self._cache_discount_holdings_locked(symbol, pool) if symbol else {
+                "symbol": None,
+                "holdings_qty": 0.0,
+                "quote_spent": 0.0,
+            }
             snapshot = {
                 "profit_reserve": {
                     "symbol": symbol or None,
@@ -207,6 +245,8 @@ class ProfitAllocator:
                     "pending_quote": float(self.state.get("bnb_pending_quote", 0.0)),
                     "holdings_qty": float(self.state.get("bnb_holdings_qty", 0.0)),
                 },
+                "discount_holdings": holdings,
+                "trading_active": self._active_positions.get(symbol, False) if symbol else False,
             }
         return snapshot
 
@@ -375,7 +415,16 @@ class ProfitAllocator:
             return
         symbol = discount_symbol.upper() if discount_symbol else ""
         if symbol:
-            self._maybe_buy_discount(symbol, price_lookup=price_lookup, client=client, dry_run=dry_run, activity_logger=activity_logger)
+            if self.config.allow_during_active_position or not self._is_trading_active(symbol):
+                self._maybe_buy_discount(
+                    symbol,
+                    price_lookup=price_lookup,
+                    client=client,
+                    dry_run=dry_run,
+                    activity_logger=activity_logger,
+                )
+            else:
+                logging.debug("Skipping profit recycle buy for %s: trading position active", symbol)
         self._maybe_buy_bnb(price_lookup=price_lookup, client=client, dry_run=dry_run, activity_logger=activity_logger)
 
     def sell_on_rip(

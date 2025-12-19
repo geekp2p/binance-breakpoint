@@ -505,6 +505,7 @@ def main() -> None:
         realized_pnl_total = 0.0
         pnl_by_strategy: Dict[str, float] = {"ladder": 0.0, "micro": 0.0}
         last_open_time = 0
+        stash_snapshot: Dict[str, object] = {}
 
         if savepoint_payload and savepoint_payload.get("state"):
             apply_payload_to_state(state, savepoint_payload["state"])
@@ -723,6 +724,7 @@ def main() -> None:
                 if _is_significant(event_name):
                     pending_status_reason = event_name
 
+        profit_allocator.set_trading_position_active(pair_symbol, state.Q > 0)
         profit_allocator.process_pending(
             discount_symbol,
             price_lookup=price_lookup,
@@ -1043,6 +1045,28 @@ def main() -> None:
                 return qty * price
             return 0.0
 
+        def refresh_stash_snapshot() -> Dict[str, object]:
+            nonlocal stash_snapshot
+            reserves = profit_allocator.reserves_snapshot(discount_symbol)
+            stash_snapshot = reserves.get("discount_holdings") or {}
+            return reserves
+
+        def stash_adjustments() -> tuple[float, float]:
+            if not stash_snapshot:
+                refresh_stash_snapshot()
+            qty = 0.0
+            cost = 0.0
+            if isinstance(stash_snapshot, dict):
+                try:
+                    qty = float(stash_snapshot.get("holdings_qty", 0.0))
+                except (TypeError, ValueError):
+                    qty = 0.0
+                try:
+                    cost = float(stash_snapshot.get("quote_spent", 0.0))
+                except (TypeError, ValueError):
+                    cost = 0.0
+            return qty, cost
+
         def rollback_failed_sah(ev: Dict[str, object], ts: datetime, exc: Exception) -> None:
             qty = float(ev.get("qty") or ev.get("order_qty") or 0.0)
             cost_share = float(ev.get("cost_share") or 0.0)
@@ -1070,8 +1094,9 @@ def main() -> None:
             micro_totals = state._micro_totals()
             micro_qty = max(micro_totals.get("qty", 0.0), 0.0)
             micro_cost = max(micro_totals.get("cost", 0.0), 0.0)
-            qty = max(state.Q - baseline_qty - micro_qty, 0.0)
-            cost = max(state.C - baseline_cost - micro_cost, 0.0)
+            stash_qty, stash_cost = stash_adjustments()
+            qty = max(state.Q - baseline_qty - micro_qty - stash_qty, 0.0)
+            cost = max(state.C - baseline_cost - micro_cost - stash_cost, 0.0)
             # Avoid reporting a cost when there is no position (can happen if cost
             # bookkeeping drifts slightly after a full exit).
             if qty <= 0:
@@ -1137,7 +1162,11 @@ def main() -> None:
             }
 
         def build_status_snapshot(current_price: float, ts: datetime) -> Dict[str, object]:
+            nonlocal stash_snapshot
+            reserves = refresh_stash_snapshot()
+            stash_qty, stash_cost = stash_adjustments()
             net_qty, net_cost = ladder_position()
+            profit_allocator.set_trading_position_active(pair_symbol, net_qty > 0)
             p_be = None
             if net_qty > 0:
                 p_be = net_cost / (net_qty * (1 - state.fees_sell))
@@ -1210,7 +1239,6 @@ def main() -> None:
                     next_sell_target = state.TP_base
                     if next_sell_target is None and p_be is not None:
                         next_sell_target = p_be * (1 + state.trail.p_min)
-            reserves = profit_allocator.reserves_snapshot(discount_symbol)
             fees = profit_allocator.fees_snapshot(pair_symbol)
             return {
                 "timestamp": ts.isoformat(),
@@ -1239,6 +1267,12 @@ def main() -> None:
                 "realized_pnl_total": realized_pnl_total,
                 "profit_reserve_coin": reserves.get("profit_reserve"),
                 "bnb_reserve_for_fees": reserves.get("bnb_reserve"),
+                "accumulation_stash": {
+                    "symbol": stash_snapshot.get("symbol") if isinstance(stash_snapshot, dict) else None,
+                    "qty": stash_qty,
+                    "cost": stash_cost,
+                    "pending_quote": (reserves.get("profit_reserve") or {}).get("pending_quote", 0.0),
+                },
                 "fees_paid": fees,
                 "scalp_enabled": bool(state.scalp.enabled),
                 "scalp_positions": len(state.scalp_positions),
@@ -1350,6 +1384,13 @@ def main() -> None:
                 parts.append(f"reserve_bnb={pending_bnb:.2f}")
             except Exception:
                 logging.debug("Unable to format reserve snapshot")
+            try:
+                stash = status.get("accumulation_stash") or {}
+                stash_qty = float(stash.get("qty", 0.0))
+                stash_cost = float(stash.get("cost", 0.0))
+                parts.append(f"stash=q{stash_qty:.4f},c{stash_cost:.2f}")
+            except Exception:
+                logging.debug("Unable to format stash snapshot")
             try:
                 pair_fees = fees_paid.get("pair", {})
                 total_fees = fees_paid.get("totals", {})
