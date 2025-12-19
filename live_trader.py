@@ -982,12 +982,19 @@ def main() -> None:
             )
             return adjusted_quote, False
 
+        def _normalize_log_level(level: object) -> int:
+            """Ensure numeric log level; regressions passing logging.error callable must resolve to logging.ERROR."""
+            try:
+                return int(level)
+            except (TypeError, ValueError):
+                return logging.ERROR
+
         def rollback_failed_buy(
             ev: Dict[str, object],
             ts: datetime,
             exc: Exception,
             *,
-            log_level: int = logging.error,
+            log_level: int = logging.ERROR,
             event_label: str = "BUY_FAILED",
             extra: Optional[Dict[str, object]] = None,
         ) -> None:
@@ -1002,7 +1009,7 @@ def main() -> None:
             if ev.get("event") == "BTD_ORDER" and state.btd_orders_done > 0:
                 state.btd_orders_done -= 1
             logging.log(
-                log_level,
+                _normalize_log_level(log_level),
                 "Market buy failed; rolled back expected position (qty %.8f, quote %.8f): %s",
                 qty,
                 quote_amt,
