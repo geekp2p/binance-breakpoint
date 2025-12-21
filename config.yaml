@@ -771,7 +771,7 @@ pairs:
         min_displacement_pct: 0.005
         cooldown_bars: 20
     plotting: { enable: true }
-    
+
   - symbol: SFPUSDT
     quote: USDT
     b_alloc: 4567.0
@@ -899,7 +899,7 @@ pairs:
         min_displacement_pct: 0.005
         cooldown_bars: 20
     plotting: { enable: true }
-	
+
   - symbol: BTCUSDT
     quote: USDT
     b_alloc: 7899.0
