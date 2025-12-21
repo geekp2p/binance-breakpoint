@@ -1026,7 +1026,7 @@ pairs:
         min_displacement_atr: 0.5
         min_displacement_pct: 0.005
         cooldown_bars: 20
-    plotting: { enable: true }	    
+    plotting: { enable: true }
 
 general:
   snapshot_every_bars: 1
