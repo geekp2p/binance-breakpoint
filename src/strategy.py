@@ -960,16 +960,17 @@ class StrategyState:
                 if exit_price < breakeven_price:
                     exit_price = breakeven_price                
                 qty_to_sell = min(qty, self.Q)
-                if qty_to_sell <= max(self.micro.min_exit_qty, 0.0):
+                tiny_qty_threshold = max(self.micro.min_exit_qty, 0.0)
+                if qty_to_sell <= tiny_qty_threshold:
 
-                    if qty_to_sell <= 0 and self.Q <= 0:
-                        # Stale position with no inventory left: prune to avoid ghost state
+                    if self.Q <= tiny_qty_threshold:
+                        # No meaningful inventory left to exit → prune stale micro position
                         log_events.append(
                             {
                                 "ts": ts,
                                 "event": "MICRO_EXIT_PRUNED",
-                                "reason": "NO_QTY",
-                                "qty": qty,
+                                "reason": "TINY_QTY",
+                                "qty": qty_to_sell,
                                 "price": exit_price,
                             }
                         )
@@ -997,9 +998,10 @@ class StrategyState:
                     continue
 
                 notional = qty_to_sell * exit_price
-                if notional <= max(self.micro.min_exit_notional, 0.0):
+                min_notional = max(self.micro.min_exit_notional, 0.0)
+                if notional <= min_notional:
 
-                    if qty_to_sell <= 0 and self.Q <= 0:
+                    if self.Q * exit_price <= min_notional:
                         log_events.append(
                             {
                                 "ts": ts,
@@ -1011,6 +1013,7 @@ class StrategyState:
                         )
                         self.micro_last_exit_price = exit_price
                         self.micro_cooldown_until_bar = self.bar_index + max(1, int(self.micro.cooldown_bars))
+                        self._adjust_micro_tp_markup(0.0, hold_bars=hold_bars, reason=reason)
                         continue
 
                     pos["skip_until_bar"] = self.bar_index + max(1, int(self.micro.cooldown_bars))
@@ -1027,6 +1030,7 @@ class StrategyState:
                     )
                     # self.micro_last_exit_price = exit_price
                     self.micro_cooldown_until_bar = self.bar_index + max(1, int(self.micro.cooldown_bars))
+                    self._adjust_micro_tp_markup(0.0, hold_bars=hold_bars, reason=reason)
                     continue
 
                 cost_share = pos["cost"] * (qty_to_sell / qty)
