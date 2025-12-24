@@ -1,3 +1,5 @@
+import math
+
 import pandas as pd
 
 from src.strategy import (
@@ -87,3 +89,56 @@ def test_micro_position_pruned_when_tiny_inventory_left():
 
     assert not state.micro_positions, "Micro position should be pruned when only tiny qty remains"
     assert any(ev.get("event") == "MICRO_EXIT_PRUNED" for ev in log_events)
+
+
+def test_p_be_uses_micro_holdings_when_present():
+    state = _build_state_with_micro()
+    # Two units at average price 100
+    state.Q = 2.0
+    state.C = state.Q * 100.0 * (1 + state.fees_buy)
+
+    # Track a micro position inside the total inventory
+    micro_cost = 0.5 * 100.0 * (1 + state.fees_buy)
+    state.micro_positions = [
+        {
+            "entry": 100.0,
+            "qty": 0.5,
+            "cost": micro_cost,
+            "target": 101.0,
+            "stop": 98.0,
+            "entry_bar": 0,
+        }
+    ]
+
+    expected_p_be = state.C / (state.Q * (1 - state.fees_sell))
+    assert math.isclose(state.P_BE(), expected_p_be, rel_tol=1e-9)
+
+
+def test_micro_exit_nudges_ladder_progress():
+    state = _build_state_with_micro()
+    ts = pd.Timestamp("2025-01-01T00:00:00Z")
+    log_events: list[dict] = []
+
+    state.rebuild_ladder(base_price=100.0, ts=ts, log_events=log_events)
+
+    # Hold a micro position that will stop out
+    state.micro_positions = [
+        {
+            "entry": 97.0,
+            "qty": 1.0,
+            "cost": 97.0 * (1 + state.fees_buy),
+            "target": 110.0,
+            "stop": 96.0,
+            "entry_bar": 0,
+        }
+    ]
+    state.Q = 1.0
+    state.C = 97.0 * (1 + state.fees_buy)
+
+    state._check_micro_take_profit(ts=ts, h=96.0, l=95.5, log_events=log_events)
+
+    assert state.ladder_next_idx >= 2, "Micro exit should pull the ladder forward"
+    assert any(
+        ev.get("event") == "LADDER_NUDGE" and ev.get("reason") == "MICRO_EXIT"
+        for ev in log_events
+    )

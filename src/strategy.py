@@ -451,7 +451,10 @@ class StrategyState:
             cost += pos.get("cost", 0.0)
         return {"qty": qty, "cost": cost}
 
-    def _core_position(self) -> Dict[str, float]:
+    def _core_position(self, include_micro: bool = True) -> Dict[str, float]:
+        if include_micro:
+            return {"qty": self.Q, "cost": self.C}
+
         micro = self._micro_totals()
         core_qty = max(self.Q - micro["qty"], 0.0)
         core_cost = max(self.C - micro["cost"], 0.0)
@@ -489,6 +492,22 @@ class StrategyState:
         if ladder_cap > 0:
             cap = min(cap, ladder_cap)
         return min(cap, remaining_quote)
+    
+    def _nudge_ladder_to_price(self, price: float, ts, log_events: List[Dict[str, Any]], reason: str):
+        while (
+            self.ladder_next_idx < len(self.ladder_prices)
+            and price <= self.ladder_prices[self.ladder_next_idx]
+        ):
+            self.ladder_next_idx += 1
+            log_events.append(
+                {
+                    "ts": ts,
+                    "event": "LADDER_NUDGE",
+                    "reason": reason,
+                    "ladder_idx": self.ladder_next_idx,
+                    "ladder_price": self.ladder_prices[self.ladder_next_idx - 1],
+                }
+            )
 
     def _disarm_btd(self):
         self.btd_armed = False
@@ -896,17 +915,20 @@ class StrategyState:
         self.micro_cooldown_until_bar = self.bar_index + max(1, int(self.micro.cooldown_bars))
         self.micro_last_exit_price = None
 
-        while self.ladder_next_idx < len(self.ladder_prices) and price <= self.ladder_prices[self.ladder_next_idx]:
-            self.ladder_next_idx += 1
-            log_events.append(
-                {
-                    "ts": ts,
-                    "event": "LADDER_NUDGE",
-                    "reason": "MICRO_BUY",
-                    "ladder_idx": self.ladder_next_idx,
-                    "ladder_price": self.ladder_prices[self.ladder_next_idx - 1],
-                }
-            )
+        # while self.ladder_next_idx < len(self.ladder_prices) and price <= self.ladder_prices[self.ladder_next_idx]:
+        #     self.ladder_next_idx += 1
+        #     log_events.append(
+        #         {
+        #             "ts": ts,
+        #             "event": "LADDER_NUDGE",
+        #             "reason": "MICRO_BUY",
+        #             "ladder_idx": self.ladder_next_idx,
+        #             "ladder_price": self.ladder_prices[self.ladder_next_idx - 1],
+        #         }
+        #     )
+
+        self._nudge_ladder_to_price(price, ts, log_events, reason="MICRO_BUY")
+
         log_events.append({
             "ts": ts,
             "event": "MICRO_BUY",
@@ -1047,6 +1069,7 @@ class StrategyState:
                         }
                     )
                 self.micro_last_exit_price = exit_price
+                self._nudge_ladder_to_price(exit_price, ts, log_events, reason="MICRO_EXIT")
                 self.micro_cooldown_until_bar = self.bar_index + max(1, int(self.micro.cooldown_bars))
                 min_profit_pct = min(
                     self._micro_min_profit_pct() * max(1.0, self.micro_reentry_scale),
