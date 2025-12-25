@@ -113,6 +113,26 @@ def test_micro_buy_sell_and_reentry_guard():
     assert state.micro_positions
 
 
+def test_micro_buy_skipped_when_core_inventory_present():
+    state = make_state()
+    state.rebuild_ladder(100.0)
+    seed_micro_ready(state)
+
+    # Pretend we already hold inventory from ladder/scalp so micro shouldn't stack
+    state.Q = 1.5
+    state.C = 150.0
+
+    events: List[Dict[str, Any]] = []
+    ts = pd.Timestamp("2025-01-01T00:00:00Z")
+
+    state._maybe_micro_buy(ts, h=100.3, l=99.7, log_events=events)
+
+    assert not state.micro_positions, "micro buy should be blocked while core inventory is open"
+    skip = next(e for e in events if e["event"] == "MICRO_BUY_SKIPPED")
+    assert skip["reason"] == "OPEN_INVENTORY"
+    assert skip["core_qty"] == state.Q
+
+
 def test_micro_stop_clamped_and_no_oversell():
     state = make_state()
     state.rebuild_ladder(100.0)
@@ -251,6 +271,9 @@ def test_micro_loss_recovery_boosts_next_take_profit():
     state.micro_swings = state.micro.min_swings
     state.micro_last_direction = None
     state.ladder_next_idx = 0
+    state.Q = 0.0
+    state.C = 0.0
+    state.micro_reentry_scale = 1.0
 
     events.clear()
     state._maybe_micro_buy(ts, h=base * 1.001, l=base * 0.999, log_events=events)
@@ -388,9 +411,9 @@ def test_micro_prunes_when_qty_guard_hits():
     events.clear()
     state._check_micro_take_profit(ts, h=position["stop"], l=position["stop"], log_events=events)
 
-    assert state.micro_positions, "position should stay tracked when qty is tiny but non-zero"
-    skipped = next(e for e in events if e["event"] == "MICRO_EXIT_SKIPPED")
-    assert skipped["reason"] == "TINY_QTY"
+    assert not state.micro_positions, "tiny remainder should prune the stale position"
+    pruned = next(e for e in events if e["event"] == "MICRO_EXIT_PRUNED")
+    assert pruned["reason"] == "TINY_QTY"
 
     # A second check should no longer emit new micro stop/exit events
     events.clear()
@@ -433,6 +456,9 @@ def test_micro_adaptive_tp_markup_increases_after_fast_loss():
     state.micro_swings = state.micro.min_swings
     state.micro_last_direction = None
     state.ladder_next_idx = 0
+    state.Q = 0.0
+    state.C = 0.0
+    state.micro_reentry_scale = 1.0
     events.clear()
     state._maybe_micro_buy(ts, h=new_base * 1.001, l=new_base * 0.999, log_events=events)
     new_buy = next(e for e in events if e["event"] == "MICRO_BUY")

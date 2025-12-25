@@ -815,7 +815,19 @@ class StrategyState:
                     "open_positions": len(self.micro_positions),
                 }
             )
-            return        
+            return
+        core = self._core_position(include_micro=False)
+        if core["qty"] > 0:
+            log_events.append(
+                {
+                    "ts": ts,
+                    "event": "MICRO_BUY_SKIPPED",
+                    "reason": "OPEN_INVENTORY",
+                    "core_qty": core["qty"],
+                }
+            )
+            self.micro_cooldown_until_bar = self.bar_index + max(1, int(self.micro.cooldown_bars))
+            return
         snap = self._micro_snapshot()
         if not snap or not snap["ready"]:
             return
