@@ -52,6 +52,7 @@ def test_scalp_buy_respects_cooldown():
     state.on_bar(pd.Timestamp("2025-01-01T00:00:00Z"), 100.0, 100.0, 90.0, 95.0, 0, log_events)
     assert any(ev["event"] == "SCALP_BUY" for ev in log_events)
     assert state.scalp_trades_done == 1
+    entry_price = next(ev["price"] for ev in log_events if ev["event"] == "SCALP_BUY")
 
     # Cooldown active: second bar under trigger should be skipped.
     log_events.clear()
@@ -61,6 +62,24 @@ def test_scalp_buy_respects_cooldown():
 
     # After cooldown expires another scalp buy can proceed.
     log_events.clear()
-    state.on_bar(pd.Timestamp("2025-01-01T00:03:00Z"), 98.0, 98.0, 90.0, 95.0, 0, log_events)
+    drop_pct = state._scalp_thresholds()["drop_pct"]
+    next_trigger_price = entry_price * (1 - drop_pct)
+    state.on_bar(pd.Timestamp("2025-01-01T00:03:00Z"), next_trigger_price - 0.5, next_trigger_price - 0.5, next_trigger_price - 1.0, next_trigger_price - 0.6, 0, log_events)
     assert sum(1 for ev in log_events if ev["event"] == "SCALP_BUY") == 1
     assert state.scalp_trades_done == 2
+
+
+def test_scalp_anchor_rebases_after_buy():
+    state = _make_state(enabled=True, cooldown_bars=0, order_pct_allocation=1.0, base_drop_pct=0.03)
+    log_events: list[dict] = []
+
+    # First bar triggers a scalp buy off the initial anchor price.
+    state.on_bar(pd.Timestamp("2025-01-01T00:00:00Z"), 100.0, 100.0, 95.0, 96.0, 0, log_events)
+    scalp_event = next(ev for ev in log_events if ev["event"] == "SCALP_BUY")
+    assert scalp_event
+    assert state.scalp_anchor_price == scalp_event["price"]
+
+    # Price stays above the new anchor-triggered level; no repeat scalp buy.
+    log_events.clear()
+    state.on_bar(pd.Timestamp("2025-01-01T00:01:00Z"), 96.5, 96.5, 95.5, 96.0, 0, log_events)
+    assert not any(ev["event"] == "SCALP_BUY" for ev in log_events)

@@ -642,6 +642,10 @@ class StrategyState:
             "cost": cost,
             "target": target,
         })
+        # Re-anchor after each scalp entry so subsequent scalps require a
+        # fresh drop from the last filled level instead of repeatedly
+        # firing around the same price.
+        self.scalp_anchor_price = price
         self.scalp_trades_done += 1
         self.scalp_cooldown_until_bar = self.bar_index + max(1, int(self.scalp.cooldown_bars))
         log_events.append({
