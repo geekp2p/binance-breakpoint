@@ -16,6 +16,16 @@ docker compose up backtest
 docker compose up demo
 ```
 
+### ตัวอย่างไฟล์ `.env`
+ไฟล์ `.env` ใช้สำหรับเก็บคีย์ Binance ของคุณ (ถูกใส่ใน `.gitignore` แล้ว):
+
+```env
+# .env (example)
+BINANCE_API_KEY=your_api_key
+BINANCE_API_SECRET=your_api_secret
+```
+
+
 ## New: fast-forward simulation (3 days -> ~3 hours)
 - รันบริการจำลองแบบเร่งเวลาด้วย Docker (ไม่ต้องตั้งค่าเพิ่ม) พร้อม UI ทดสอบ:
   ```bash
