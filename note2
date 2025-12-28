@@ -1,0 +1,4 @@
+PS C:\binancex\binance-breakpoint\binance-breakpoint> git config --global user.name geekp2p
+PS C:\binancex\binance-breakpoint\binance-breakpoint> git config --global user.email "geekp2p@gmail.com"
+PS C:\binancex\binance-breakpoint\binance-breakpoint> git config --global --list
+
