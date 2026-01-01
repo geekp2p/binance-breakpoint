@@ -865,38 +865,57 @@
       .replace(/</g, "&lt;")
       .replace(/>/g, "&gt;");
 
+    const formatTime = (ts) => (ts ? new Date(ts).toLocaleTimeString([], { hour12: false }) : "-");
+
     function renderLogs(logs) {
       if (!logFeedEl || !logMetaEl) return;
       const items = Array.isArray(logs) ? logs.slice(-1000) : [];
-      logMetaEl.textContent = `${items.length} recent (latest 1000)`;
-      const lines = items.map((entry) => {
-        const ts = entry.ts ? new Date(entry.ts).toLocaleTimeString() : "";
-        const sym = entry.symbol ? `[${entry.symbol}]` : "";
+
+      const condensed = items.map((entry) => {
+        const time = formatTime(entry.ts);
+        const symbol = entry.symbol || "";
         const kind = entry.kind ? String(entry.kind).toUpperCase() : "";
         const side = entry.side ? String(entry.side).toUpperCase() : "";
-        const qty = typeof entry.qty === "number" ? `qty=${fmtNumber(entry.qty, 6)}` : "";
-        const price = typeof entry.price === "number" ? `@ ${fmtNumber(entry.price)}` : "";
-        const notional = typeof entry.notional === "number" ? `notional=${fmtNumber(entry.notional, 4)}` : "";
+        const baseKind = side || kind || "EVENT";
+        const qty = typeof entry.qty === "number" ? `q${fmtNumber(entry.qty, 6)}` : "";
+        const price = typeof entry.price === "number" ? `@${fmtNumber(entry.price)}` : "";
+        const notional = typeof entry.notional === "number" ? `n${fmtNumber(entry.notional, 4)}` : "";
         const pnlVal = typeof entry.pnl === "number" ? entry.pnl : null;
-        const pnlCls = pnlVal === null ? "" : pnlVal >= 0 ? "pnl-pos" : "pnl-neg";
         const pnlText = pnlVal === null ? "" : `pnl=${fmtNumber(pnlVal, 6)}`;
-        const pnlStatus = entry.status ? `(${entry.status})` : "";
-        const baseKind = side || kind;
-        const details = [qty, price, notional].filter(Boolean).join(" ");
-        const msg = entry.msg ?? "";
-        const pnlChunk = pnlText
-          ? `<span class="${pnlCls}">${escapeHtml(pnlText)} ${escapeHtml(pnlStatus)}</span>`
-          : "";
+        const reason = [entry.msg, entry.status].filter(Boolean).join(" | ");
+        const detailText = [qty, price, notional].filter(Boolean).join(" ");
+        const label = [baseKind, reason].filter(Boolean).join(": ");
+        const suffix = [detailText, pnlText].filter(Boolean).join("  ");
+        const summary = [symbol, label, suffix].filter(Boolean).join("  ");
+        const key = [symbol, label, suffix].filter(Boolean).join("|");
+        return { time, symbol, summary, key };
+      });
+
+      const deduped = condensed.reduce((acc, item) => {
+        const last = acc[acc.length - 1];
+        if (last && last.key === item.key) {
+          last.count += 1;
+          last.lastSeen = item.time;
+          return acc;
+        }
+        acc.push({ ...item, count: 1, lastSeen: item.time });
+        return acc;
+      }, []);
+
+      const lines = deduped.map((entry) => {
+        const timeLabel = entry.time === entry.lastSeen
+          ? entry.time
+          : `${entry.time}–${entry.lastSeen}`;
+        const countBadge = entry.count > 1 ? `<span class="pill">x${entry.count}</span>` : "";
         return `
           <div class="log-line">
-            <span class="kind">${escapeHtml(ts)}</span>
-            <span class="sym">${escapeHtml(sym)}</span>
-            ${escapeHtml(baseKind)}
-            ${escapeHtml(details)}
-            ${pnlChunk}
-            ${escapeHtml(msg)}
+            <span class="kind">${escapeHtml(timeLabel)}</span>
+            <span class="sym">${escapeHtml(entry.summary)}</span>
+            ${countBadge}
           </div>`;
       });
+
+      logMetaEl.textContent = `${deduped.length} grouped from ${items.length} recent (latest 1000)`;
       logFeedEl.innerHTML = lines.join("\n");
     }
 
