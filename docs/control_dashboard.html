@@ -245,9 +245,9 @@
       line-height: 1.3;
     }
 
-    .log-line { color: var(--text); }
+    .log-line { color: var(--text); display: flex; gap: 8px; align-items: center; }
     .log-line .sym { color: var(--accent); font-weight: 700; }
-    .log-line .kind { color: var(--muted); font-weight: 700; }
+    .log-line .kind { color: var(--muted); font-weight: 700; min-width: 120px; }
     .log-line .pnl-pos { color: var(--success); font-weight: 700; }
     .log-line .pnl-neg { color: var(--danger); font-weight: 700; }
 
@@ -867,12 +867,19 @@
 
     const formatTime = (ts) => (ts ? new Date(ts).toLocaleTimeString([], { hour12: false }) : "-");
 
+    const formatRange = (firstTs, lastTs) => {
+      const start = formatTime(firstTs);
+      const end = formatTime(lastTs);
+      if (!firstTs || !lastTs || start === end) return start;
+      return `${start}–${end}`;
+    };
+
     function renderLogs(logs) {
       if (!logFeedEl || !logMetaEl) return;
       const items = Array.isArray(logs) ? logs.slice(-1000) : [];
+      const collapseWindowMs = 2 * 60 * 1000; // merge repeating noise within 2 minutes
 
       const condensed = items.map((entry) => {
-        const time = formatTime(entry.ts);
         const symbol = entry.symbol || "";
         const kind = entry.kind ? String(entry.kind).toUpperCase() : "";
         const side = entry.side ? String(entry.side).toUpperCase() : "";
@@ -886,26 +893,39 @@
         const detailText = [qty, price, notional].filter(Boolean).join(" ");
         const label = [baseKind, reason].filter(Boolean).join(": ");
         const suffix = [detailText, pnlText].filter(Boolean).join("  ");
-        const summary = [symbol, label, suffix].filter(Boolean).join("  ");
+        const summary = [symbol && `[${symbol}]`, label, suffix].filter(Boolean).join(" • ");
         const key = [symbol, label, suffix].filter(Boolean).join("|");
-        return { time, symbol, summary, key };
+        return { ts: entry.ts, symbol, summary, key };
       });
 
+      const lastByKey = new Map();
       const deduped = condensed.reduce((acc, item) => {
-        const last = acc[acc.length - 1];
-        if (last && last.key === item.key) {
-          last.count += 1;
-          last.lastSeen = item.time;
+        const priorIndex = lastByKey.get(item.key);
+        const prior = typeof priorIndex === "number" ? acc[priorIndex] : undefined;
+        const withinWindow =
+          prior && typeof item.ts === "number" && typeof prior.lastTs === "number"
+            ? Math.abs(item.ts - prior.lastTs) <= collapseWindowMs
+            : false;
+
+        if (prior && withinWindow) {
+          prior.count += 1;
+          prior.lastTs = item.ts || prior.lastTs;
           return acc;
         }
-        acc.push({ ...item, count: 1, lastSeen: item.time });
+
+        const nextIndex = acc.length;
+        acc.push({
+          ...item,
+          count: 1,
+          firstTs: item.ts,
+          lastTs: item.ts,
+        });
+        lastByKey.set(item.key, nextIndex);
         return acc;
       }, []);
 
       const lines = deduped.map((entry) => {
-        const timeLabel = entry.time === entry.lastSeen
-          ? entry.time
-          : `${entry.time}–${entry.lastSeen}`;
+        const timeLabel = formatRange(entry.firstTs, entry.lastTs);
         const countBadge = entry.count > 1 ? `<span class="pill">x${entry.count}</span>` : "";
         return `
           <div class="log-line">
@@ -915,7 +935,7 @@
           </div>`;
       });
 
-      logMetaEl.textContent = `${deduped.length} grouped from ${items.length} recent (latest 1000)`;
+      logMetaEl.textContent = `${deduped.length} grouped from ${items.length} recent (latest 1000, 2m dedup window)`;
       logFeedEl.innerHTML = lines.join("\n");
     }
 
