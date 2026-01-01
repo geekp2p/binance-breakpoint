@@ -133,6 +133,36 @@ def test_micro_buy_skipped_when_core_inventory_present():
     assert skip["core_qty"] == state.Q
 
 
+def test_micro_skip_logging_throttled_by_cooldown():
+    state = make_state()
+    state.rebuild_ladder(100.0)
+    seed_micro_ready(state)
+
+    # Pre-open a micro position so subsequent buy attempts should be skipped
+    state.micro_positions.append(
+        {"entry": 100.0, "qty": 1.0, "cost": 100.0, "target": 101.0, "stop": 99.0, "entry_bar": state.bar_index}
+    )
+
+    events: List[Dict[str, Any]] = []
+    ts = pd.Timestamp("2025-01-01T00:00:00Z")
+
+    # First skip should be logged
+    state._maybe_micro_buy(ts, h=100.2, l=99.8, log_events=events)
+    assert any(e.get("reason") == "OPEN_POSITION" for e in events)
+
+    # Subsequent bars within the cooldown should not spam the same reason
+    events.clear()
+    state.bar_index += 1
+    state._maybe_micro_buy(ts, h=100.2, l=99.8, log_events=events)
+    assert not events, "skip events should be throttled while still in cooldown"
+
+    # After cooldown window passes we log again for visibility
+    events.clear()
+    state.bar_index = state.micro_skip_log_until_bar.get("OPEN_POSITION", state.bar_index) + 1
+    state._maybe_micro_buy(ts, h=100.2, l=99.8, log_events=events)
+    assert any(e.get("reason") == "OPEN_POSITION" for e in events)
+
+
 def test_micro_stop_clamped_and_no_oversell():
     state = make_state()
     state.rebuild_ladder(100.0)

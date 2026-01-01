@@ -231,6 +231,7 @@ class StrategyState:
     micro_loss_recovery_pct: float = 0.0
     micro_reentry_scale: float = 1.0
     micro_tp_markup_pct: float = 0.0
+    micro_skip_log_until_bar: Dict[str, int] = field(default_factory=dict)
 
     def _remaining_quote_allocation(self) -> float:
         effective_alloc = min(self.b_alloc, self.buy.max_total_quote) if self.buy.max_total_quote > 0 else self.b_alloc
@@ -811,24 +812,20 @@ class StrategyState:
         if not self.micro.enabled or self.bar_index < self.micro_cooldown_until_bar:
             return
         if self.micro_positions:
-            log_events.append(
-                {
-                    "ts": ts,
-                    "event": "MICRO_BUY_SKIPPED",
-                    "reason": "OPEN_POSITION",
-                    "open_positions": len(self.micro_positions),
-                }
+            self._log_micro_skip(
+                ts,
+                "OPEN_POSITION",
+                log_events,
+                open_positions=len(self.micro_positions),
             )
             return
         core = self._core_position(include_micro=False)
         if core["qty"] > 0:
-            log_events.append(
-                {
-                    "ts": ts,
-                    "event": "MICRO_BUY_SKIPPED",
-                    "reason": "OPEN_INVENTORY",
-                    "core_qty": core["qty"],
-                }
+            self._log_micro_skip(
+                ts,
+                "OPEN_INVENTORY",
+                log_events,
+                core_qty=core["qty"],
             )
             self.micro_cooldown_until_bar = self.bar_index + max(1, int(self.micro.cooldown_bars))
             return
@@ -872,28 +869,26 @@ class StrategyState:
             self.micro_last_exit_price is not None
             and entry >= self.micro_last_exit_price * (1 - max(reentry_drop_pct, 0.0))
         ):
-            log_events.append(
-                {
-                    "ts": ts,
-                    "event": "MICRO_BUY_SKIPPED",
-                    "reason": "NEED_PULLBACK",
-                    "entry": entry,
-                    "last_exit": self.micro_last_exit_price,
-                    "reentry_drop_pct": reentry_drop_pct,
-                }
+            self._log_micro_skip(
+                ts,
+                "NEED_PULLBACK",
+                log_events,
+                entry=entry,
+                last_exit=self.micro_last_exit_price,
+                reentry_drop_pct=reentry_drop_pct,
             )
             self.micro_cooldown_until_bar = self.bar_index + max(1, int(self.micro.cooldown_bars))
-            return        
+            return
 
         order_quote = self._remaining_micro_allocation()
         if order_quote <= 0:
-            log_events.append({
-                "ts": ts,
-                "event": "MICRO_BUY_SKIPPED",
-                "reason": "NO_CAPITAL",
-                "entry": entry,
-                "band_pct": snap["band_pct"],
-            })
+            self._log_micro_skip(
+                ts,
+                "NO_CAPITAL",
+                log_events,
+                entry=entry,
+                band_pct=snap["band_pct"],
+            )
             self.micro_cooldown_until_bar = self.bar_index + max(1, int(self.micro.cooldown_bars))
             return
         price = entry
@@ -1399,3 +1394,24 @@ class StrategyState:
                     self._reset_btd_progress()
                     return {"sell_price": target, "pnl": pnl, "reason":"TOTAL_CAP", "qty": qty, "cost": core["cost"], "proceeds": proceeds}
         return None
+    def _log_micro_skip(
+        self, ts, reason: str, log_events: List[Dict[str, Any]], **extra
+    ) -> bool:
+        """Append a throttled MICRO_BUY_SKIPPED event.
+
+        Repeated skip reasons can overwhelm the activity log (e.g. while a micro
+        position remains open). We only emit the same reason once every
+        ``micro.cooldown_bars`` to preserve signal for later analysis.
+        Returns True when the event was emitted.
+        """
+
+        cooldown = max(1, int(self.micro.cooldown_bars))
+        next_allowed = self.micro_skip_log_until_bar.get(reason, -1)
+        if self.bar_index < next_allowed:
+            return False
+
+        self.micro_skip_log_until_bar[reason] = self.bar_index + cooldown
+        payload = {"ts": ts, "event": "MICRO_BUY_SKIPPED", "reason": reason}
+        payload.update(extra)
+        log_events.append(payload)
+        return True
