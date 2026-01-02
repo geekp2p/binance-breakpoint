@@ -315,6 +315,9 @@
           placeholder="Symbol e.g. ZECUSDT"
           aria-label="Pair symbol (optional)"
         />
+        <select id="filterSymbol" class="input" aria-label="Filter displayed pairs">
+          <option value="">All pairs</option>
+        </select>
         <input
           id="lookbackDays"
           class="input"
@@ -478,10 +481,12 @@
     const metaEl = document.getElementById("meta");
     const proxyToggle = document.getElementById("useProxy");
     const pairSymbolEl = document.getElementById("pairSymbol");
+    const filterSymbolEl = document.getElementById("filterSymbol");
     const lookbackEl = document.getElementById("lookbackDays");
     const speedEl = document.getElementById("speedMultiplier");
     const startBtn = document.getElementById("startSim");
     const proxyPrefKey = "bb_use_proxy";
+    let lastData = null;
 
     const defaultApiBase = (() => {
       const { protocol, hostname } = window.location;
@@ -513,6 +518,24 @@
 
     function sum(values) {
       return values.reduce((acc, v) => acc + (typeof v === "number" ? v : 0), 0);
+    }
+
+    function aggregateReserves(entries, keys = []) {
+      return entries.reduce((acc, [, v]) => {
+        const res = keys.map((k) => v[k]).find(Boolean) || {};
+        if (typeof res.quote === "number") acc.quote = (acc.quote || 0) + res.quote;
+        if (typeof res.coin === "number") acc.coin = (acc.coin || 0) + res.coin;
+        return acc;
+      }, {});
+    }
+
+    function aggregateFees(entries) {
+      return entries.reduce((acc, [, v]) => {
+        const fees = v.fees_paid?.pair || v.fees_paid?.totals || v.fees_paid;
+        if (typeof fees?.quote === "number") acc.quote = (acc.quote || 0) + fees.quote;
+        if (typeof fees?.bnb === "number") acc.bnb = (acc.bnb || 0) + fees.bnb;
+        return acc;
+      }, {});
     }
 
     function formatGap(targetPrice, currentPrice) {
@@ -665,6 +688,7 @@
         const resp = await fetch(apiUrl("/health"));
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         const data = await resp.json();
+        lastData = data;
         render(data);
       } catch (err) {
         console.error(err);
@@ -701,20 +725,34 @@
       window.localStorage.setItem(proxyPrefKey, String(proxyToggle.checked));
     }
 
+    function syncFilterOptions(entries) {
+      if (!filterSymbolEl) return;
+      const current = filterSymbolEl.value;
+      const symbols = entries.map(([symbol]) => symbol).sort();
+      const options = ["<option value=\"\">All pairs</option>", ...symbols.map((sym) => `<option value="${sym}">${sym}</option>`)];
+      filterSymbolEl.innerHTML = options.join("");
+      filterSymbolEl.value = symbols.includes(current) ? current : "";
+    }
+
     function render(data) {
       const pairs = data.pairs || {};
       const entries = Object.entries(pairs);
-      const totals = data.totals || {};
+      syncFilterOptions(entries);
+      const filterSymbol = (filterSymbolEl?.value || "").trim();
+      const filteredEntries = filterSymbol ? entries.filter(([symbol]) => symbol === filterSymbol) : entries;
+      const totals = filterSymbol ? {} : data.totals || {};
       const now = new Date().toLocaleString();
       document.getElementById("lastUpdated").textContent = `Last updated: ${now}`;
-      metaEl.textContent = `${entries.length} pairs | status: ${data.status}`;
+      metaEl.textContent = filterSymbol
+        ? `${filteredEntries.length}/${entries.length} pairs (filter ${filterSymbol}) | status: ${data.status}`
+        : `${entries.length} pairs | status: ${data.status}`;
 
-      const unrealizedList = entries.map(([, v]) => v.unrealized_pnl).filter((v) => v !== null && v !== undefined);
-      const realizedList = entries.map(([, v]) => v.realized_pnl_total ?? v.realized_pnl).filter((v) => v !== null && v !== undefined);
-      const quoteSpent = sum(entries.map(([, v]) => v.quote_spent));
-      const totalQty = sum(entries.map(([, v]) => v.qty));
-      const paused = entries.filter(([, v]) => v.paused).length;
-      const ladderInfo = entries.map(([, v]) => v.ladder_total || 0);
+      const unrealizedList = filteredEntries.map(([, v]) => v.unrealized_pnl).filter((v) => v !== null && v !== undefined);
+      const realizedList = filteredEntries.map(([, v]) => v.realized_pnl_total ?? v.realized_pnl).filter((v) => v !== null && v !== undefined);
+      const quoteSpent = sum(filteredEntries.map(([, v]) => v.quote_spent));
+      const totalQty = sum(filteredEntries.map(([, v]) => v.qty));
+      const paused = filteredEntries.filter(([, v]) => v.paused).length;
+      const ladderInfo = filteredEntries.map(([, v]) => v.ladder_total || 0);
 
       const unrealized = typeof totals.unrealized_pnl === "number" ? totals.unrealized_pnl : sum(unrealizedList);
       const realized = typeof totals.realized_pnl === "number" ? totals.realized_pnl : sum(realizedList);
@@ -742,14 +780,14 @@
       document.getElementById("quoteSpent").textContent = `${fmtNumber(quoteSpent, 2)} USDT`;
       document.getElementById("ladderInfo").textContent = `Max ladder steps: ${Math.max(0, ...ladderInfo)}`;
 
-      const totalReserves = totals.profit_reserve || {};
+      const totalReserves = totals.profit_reserve || aggregateReserves(filteredEntries, ["profit_reserve", "profit_reserve_coin"]);
       document.getElementById("reserveCoin").textContent = reserveLabel(totalReserves, { compact: true });
       document.getElementById("reserveCoinMeta").textContent = reserveLabel(totalReserves);
-      const totalBnb = totals.bnb_reserve || {};
+      const totalBnb = totals.bnb_reserve || aggregateReserves(filteredEntries, ["bnb_reserve", "bnb_reserve_for_fees"]);
       document.getElementById("reserveBnb").textContent = reserveLabel(totalBnb, { compact: true });
       document.getElementById("reserveBnbMeta").textContent = reserveLabel(totalBnb);
 
-      const feeTotals = totals.fees_paid || {};
+      const feeTotals = totals.fees_paid || aggregateFees(filteredEntries);
       document.getElementById("feesPaid").textContent = feesLabel(feeTotals);
       const feeSplitText = feesStrategyLabel(feeTotals);
       const feeMetaBase = `Quote ${fmtNumber(feeTotals.quote ?? 0, 4)} / BNB ${fmtNumber(feeTotals.bnb ?? 0, 4)}`;
@@ -772,7 +810,7 @@
       const strategyFeeMeta = `Tot q ${fmtNumber(feeTotals.quote ?? 0, 4)} / bnb ${fmtNumber(feeTotals.bnb ?? 0, 4)}`;
       document.getElementById("strategyFeesMeta").textContent = strategyFeeLabel ? `${strategyFeeMeta} | ${strategyFeeLabel}` : strategyFeeMeta;
 
-      rowsEl.innerHTML = entries
+      rowsEl.innerHTML = filteredEntries
         .map(([symbol, v]) => {
           const statusClass = v.paused ? "paused" : "live";
           const statusText = v.paused ? "Paused" : "Live";
@@ -849,9 +887,9 @@
         })
         .join("");
 
-      planRowsEl.innerHTML = entries.map(([symbol, v]) => planRow(symbol, v)).join("");
+      planRowsEl.innerHTML = filteredEntries.map(([symbol, v]) => planRow(symbol, v)).join("");
 
-      renderLogs(data.logs || []);
+      renderLogs(data.logs || [], filterSymbol);
 
       const totalsRow = document.getElementById("totalsRow");
       totalsRow.innerHTML = `
@@ -905,12 +943,14 @@
       return "info";
     };
 
-    function renderLogs(logs) {
+    function renderLogs(logs, filterSymbol = "") {
       if (!logFeedEl || !logMetaEl) return;
       const items = Array.isArray(logs) ? logs.slice(-1000) : [];
+      const symbol = filterSymbol?.trim();
+      const filtered = symbol ? items.filter((entry) => (entry.symbol || "").toUpperCase() === symbol.toUpperCase()) : items;
       const collapseWindowMs = 2 * 60 * 1000; // merge repeating noise within 2 minutes
 
-      const condensed = items.map((entry) => {
+      const condensed = filtered.map((entry) => {
         const symbol = entry.symbol || "";
         const kind = entry.kind ? String(entry.kind).toUpperCase() : "";
         const side = entry.side ? String(entry.side).toUpperCase() : "";
@@ -971,7 +1011,8 @@
           </div>`;
       });
 
-      logMetaEl.textContent = `${deduped.length} grouped from ${items.length} recent (latest 1000, 2m dedup window)`;
+      const filterMeta = symbol ? ` | filter ${symbol}` : "";
+      logMetaEl.textContent = `${deduped.length} grouped from ${filtered.length} recent (latest 1000, 2m dedup window${filterMeta})`;
       logFeedEl.innerHTML = lines.join("\n");
     }
 
@@ -1084,6 +1125,9 @@
     proxyToggle?.addEventListener("change", () => {
       persistProxyPref();
       fetchHealth();
+    });
+    filterSymbolEl?.addEventListener("change", () => {
+      if (lastData) render(lastData);
     });
 
     loadProxyPref();
