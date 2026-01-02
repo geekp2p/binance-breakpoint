@@ -55,6 +55,14 @@
     <div class="status" id="status">Idle</div>
   </form>
 
+  <div class="card" aria-label="Symbol filter" style="margin-top: 1rem;">
+    <label for="symbol-filter" style="margin-top: 0;">Filter results by symbol</label>
+    <select id="symbol-filter" name="symbol-filter" style="max-width: 220px;">
+      <option value="__all" selected>ทั้งหมด (All)</option>
+    </select>
+    <div class="muted" style="margin-top: 0.3rem;">เลือกเฉพาะเหรียญที่ต้องการดู หรือเลือกทั้งหมดเพื่อแสดงทุกตัว</div>
+  </div>
+
   <div class="card" aria-label="Simulation controls">
     <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.5rem;">
       <div>
@@ -162,6 +170,7 @@
     const resultsTableBody = document.querySelector('#results-table tbody');
     const levelsTableBody = document.querySelector('#levels-table tbody');
     const planTableBody = document.querySelector('#plan-table tbody');
+    const symbolFilter = document.getElementById('symbol-filter');
     const downloads = document.getElementById('downloads');
     const simulateForm = document.getElementById('simulate-form');
     const simulateStatus = document.getElementById('simulate-status');
@@ -198,6 +207,52 @@
       simulatePill.textContent = pillText;
       simulatePill.style.background = pillColor;
       simulatePill.style.color = pillColor === '#edf3f8' ? '#0b5db3' : '#fff';
+    }
+
+    function populateSymbolFilter(symbols) {
+      const unique = Array.from(new Set(symbols)).sort();
+      symbolFilter.innerHTML = '';
+
+      const allOption = document.createElement('option');
+      allOption.value = '__all';
+      allOption.textContent = 'ทั้งหมด (All)';
+      symbolFilter.appendChild(allOption);
+
+      if (!unique.length) {
+        const emptyOption = document.createElement('option');
+        emptyOption.value = '';
+        emptyOption.textContent = 'ยังไม่มีผลลัพธ์';
+        emptyOption.disabled = true;
+        symbolFilter.appendChild(emptyOption);
+        symbolFilter.value = '__all';
+        return;
+      }
+
+      unique.forEach(sym => {
+        const opt = document.createElement('option');
+        opt.value = sym;
+        opt.textContent = sym;
+        symbolFilter.appendChild(opt);
+      });
+
+      symbolFilter.value = '__all';
+    }
+
+    function applySymbolFilter() {
+      const selected = symbolFilter.value;
+      const matchesAll = selected === '__all';
+      const filterTable = (tbody, symbolColIdx = 0) => {
+        Array.from(tbody.querySelectorAll('tr')).forEach(tr => {
+          const symbolCell = tr.children[symbolColIdx];
+          const sym = symbolCell ? symbolCell.textContent.trim() : '';
+          tr.style.display = matchesAll || sym === selected ? '' : 'none';
+        });
+      };
+
+      filterTable(topTableBody, 1);
+      filterTable(resultsTableBody, 0);
+      filterTable(levelsTableBody, 0);
+      filterTable(planTableBody, 0);
     }
 
     function renderSimSnapshot(data) {
@@ -266,14 +321,17 @@
         const data = await resp.json();
         const tops = data.top_symbols || {};
         const top30 = tops.top30 || [];
+        const symbolSet = new Set();
         top30.forEach((row, idx) => {
           const tr = document.createElement('tr');
           tr.innerHTML = `<td>${idx+1}</td><td>${row.symbol}</td><td>${row.pnl_usd.toFixed(2)}</td><td>${row.pnl_pct.toFixed(2)}%</td>`;
           topTableBody.appendChild(tr);
+          symbolSet.add(row.symbol);
         });
         const results = data.results || {};
         const levels = data.levels || {};
         Object.keys(results).forEach(sym => {
+          symbolSet.add(sym);
           const windows = results[sym];
           Object.keys(windows).forEach(win => {
             const row = windows[win];
@@ -283,6 +341,7 @@
           });
         });
         Object.keys(levels).forEach(sym => {
+          symbolSet.add(sym);
           const lvl = levels[sym] || {};
           const tr = document.createElement('tr');
           const planTr = document.createElement('tr');
@@ -314,6 +373,8 @@
         const dl500json = buildDownloadLink('top500', tops.top500 || [], 'json');
         const dl500csv = buildDownloadLink('top500', tops.top500 || [], 'csv');
         downloads.append('Download: ', dl100json, ' ', dl100csv, ' | ', dl500json, ' ', dl500csv);
+        populateSymbolFilter(Array.from(symbolSet));
+        applySymbolFilter();
         setStatus(`Done at ${data.timestamp}`);
       } catch (err) {
         console.error(err);
@@ -322,6 +383,8 @@
         runBtn.disabled = false;
       }
     });
+
+    symbolFilter.addEventListener('change', applySymbolFilter);
 
     async function refreshSimStatus(showErrors=false) {
       try {
