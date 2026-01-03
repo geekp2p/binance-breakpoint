@@ -17,7 +17,7 @@ pairs:
     # - m_buy: ตัวคูณขนาดไม้เมื่อถอยลง
     # - n_steps: จำนวนขั้นสูงสุดในรอบสะสมหลัก
     buy_ladder:
-      d_buy: 0.015
+      d_buy: 0.02
       m_buy: 1.5
       n_steps: 10
       spacing_mode: fibo
@@ -30,12 +30,12 @@ pairs:
       max_total_quote: 0.0
 
     profit_trail:
-      p_min: 0.02
+      p_min: 0.025
       s1: 0.01
       m_step: 1.6
       tau: 0.7
-      p_lock_base: 0.005
-      p_lock_max: 0.02
+      p_lock_base: 0.007
+      p_lock_max: 0.03
       tau_min: 0.3
       no_loss_epsilon: 0.0018
 
@@ -46,7 +46,7 @@ pairs:
       beta_tau: 0.9
 
     time_caps:
-      T_idle_max_minutes: 45
+      T_idle_max_minutes: 70
       p_idle: 0.008
       T_total_cap_minutes: 180
       p_exit_min: 0.008
@@ -70,7 +70,7 @@ pairs:
       micro_oscillation:
         enabled: true
         window: 45
-        max_band_pct: 0.008
+        max_band_pct: 0.012
         min_swings: 5
         min_swing_pct: 0.0012
         entry_band_pct: 0.18
@@ -145,7 +145,7 @@ pairs:
     # - m_buy: ตัวคูณขนาดไม้เมื่อถอยลง
     # - n_steps: จำนวนขั้นสูงสุดในรอบสะสมหลัก
     buy_ladder:
-      d_buy: 0.015
+      d_buy: 0.02
       m_buy: 1.5
       n_steps: 10
       spacing_mode: fibo
@@ -158,12 +158,12 @@ pairs:
       max_total_quote: 0.0
 
     profit_trail:
-      p_min: 0.02
+      p_min: 0.025
       s1: 0.01
       m_step: 1.6
       tau: 0.7
-      p_lock_base: 0.005
-      p_lock_max: 0.02
+      p_lock_base: 0.007
+      p_lock_max: 0.03
       tau_min: 0.3
       no_loss_epsilon: 0.0018
 
@@ -174,7 +174,7 @@ pairs:
       beta_tau: 0.9
 
     time_caps:
-      T_idle_max_minutes: 45
+      T_idle_max_minutes: 70
       p_idle: 0.008
       T_total_cap_minutes: 180
       p_exit_min: 0.008
@@ -198,7 +198,7 @@ pairs:
       micro_oscillation:
         enabled: true
         window: 45
-        max_band_pct: 0.008
+        max_band_pct: 0.012
         min_swings: 5
         min_swing_pct: 0.0012
         entry_band_pct: 0.18
@@ -273,7 +273,7 @@ pairs:
     # - m_buy: ตัวคูณขนาดไม้เมื่อถอยลง
     # - n_steps: จำนวนขั้นสูงสุดในรอบสะสมหลัก
     buy_ladder:
-      d_buy: 0.015
+      d_buy: 0.02
       m_buy: 1.5
       n_steps: 10
       spacing_mode: fibo
@@ -286,12 +286,12 @@ pairs:
       max_total_quote: 0.0
 
     profit_trail:
-      p_min: 0.02
+      p_min: 0.025
       s1: 0.01
       m_step: 1.6
       tau: 0.7
-      p_lock_base: 0.005
-      p_lock_max: 0.02
+      p_lock_base: 0.007
+      p_lock_max: 0.03
       tau_min: 0.3
       no_loss_epsilon: 0.0018
 
@@ -302,7 +302,7 @@ pairs:
       beta_tau: 0.9
 
     time_caps:
-      T_idle_max_minutes: 45
+      T_idle_max_minutes: 70
       p_idle: 0.008
       T_total_cap_minutes: 180
       p_exit_min: 0.008
@@ -326,7 +326,7 @@ pairs:
       micro_oscillation:
         enabled: true
         window: 45
-        max_band_pct: 0.008
+        max_band_pct: 0.012
         min_swings: 5
         min_swing_pct: 0.0012
         entry_band_pct: 0.18
@@ -401,7 +401,7 @@ pairs:
     # - m_buy: ตัวคูณขนาดไม้เมื่อถอยลง
     # - n_steps: จำนวนขั้นสูงสุดในรอบสะสมหลัก
     buy_ladder:
-      d_buy: 0.015
+      d_buy: 0.02
       m_buy: 1.5
       n_steps: 10
       spacing_mode: fibo
@@ -414,12 +414,12 @@ pairs:
       max_total_quote: 0.0
 
     profit_trail:
-      p_min: 0.02
+      p_min: 0.025
       s1: 0.01
       m_step: 1.6
       tau: 0.7
-      p_lock_base: 0.005
-      p_lock_max: 0.02
+      p_lock_base: 0.007
+      p_lock_max: 0.03
       tau_min: 0.3
       no_loss_epsilon: 0.0018
 
@@ -430,7 +430,7 @@ pairs:
       beta_tau: 0.9
 
     time_caps:
-      T_idle_max_minutes: 45
+      T_idle_max_minutes: 70
       p_idle: 0.008
       T_total_cap_minutes: 180
       p_exit_min: 0.008
@@ -454,7 +454,7 @@ pairs:
       micro_oscillation:
         enabled: true
         window: 45
-        max_band_pct: 0.008
+        max_band_pct: 0.012
         min_swings: 5
         min_swing_pct: 0.0012
         entry_band_pct: 0.18
@@ -529,7 +529,7 @@ pairs:
     # - m_buy: ตัวคูณขนาดไม้เมื่อถอยลง
     # - n_steps: จำนวนขั้นสูงสุดในรอบสะสมหลัก
     buy_ladder:
-      d_buy: 0.015
+      d_buy: 0.02
       m_buy: 1.5
       n_steps: 10
       spacing_mode: fibo
@@ -542,12 +542,12 @@ pairs:
       max_total_quote: 0.0
 
     profit_trail:
-      p_min: 0.02
+      p_min: 0.025
       s1: 0.01
       m_step: 1.6
       tau: 0.7
-      p_lock_base: 0.005
-      p_lock_max: 0.02
+      p_lock_base: 0.007
+      p_lock_max: 0.03
       tau_min: 0.3
       no_loss_epsilon: 0.0018
 
@@ -558,7 +558,7 @@ pairs:
       beta_tau: 0.9
 
     time_caps:
-      T_idle_max_minutes: 45
+      T_idle_max_minutes: 70
       p_idle: 0.008
       T_total_cap_minutes: 180
       p_exit_min: 0.008
@@ -582,7 +582,7 @@ pairs:
       micro_oscillation:
         enabled: true
         window: 45
-        max_band_pct: 0.008
+        max_band_pct: 0.012
         min_swings: 5
         min_swing_pct: 0.0012
         entry_band_pct: 0.18
@@ -657,7 +657,7 @@ pairs:
     # - m_buy: ตัวคูณขนาดไม้เมื่อถอยลง
     # - n_steps: จำนวนขั้นสูงสุดในรอบสะสมหลัก
     buy_ladder:
-      d_buy: 0.015
+      d_buy: 0.02
       m_buy: 1.5
       n_steps: 10
       spacing_mode: fibo
@@ -670,12 +670,12 @@ pairs:
       max_total_quote: 0.0
 
     profit_trail:
-      p_min: 0.02
+      p_min: 0.025
       s1: 0.01
       m_step: 1.6
       tau: 0.7
-      p_lock_base: 0.005
-      p_lock_max: 0.02
+      p_lock_base: 0.007
+      p_lock_max: 0.03
       tau_min: 0.3
       no_loss_epsilon: 0.0018
 
@@ -686,7 +686,7 @@ pairs:
       beta_tau: 0.9
 
     time_caps:
-      T_idle_max_minutes: 45
+      T_idle_max_minutes: 70
       p_idle: 0.008
       T_total_cap_minutes: 180
       p_exit_min: 0.008
@@ -710,7 +710,7 @@ pairs:
       micro_oscillation:
         enabled: true
         window: 45
-        max_band_pct: 0.008
+        max_band_pct: 0.012
         min_swings: 5
         min_swing_pct: 0.0012
         entry_band_pct: 0.18
@@ -785,7 +785,7 @@ pairs:
     # - m_buy: ตัวคูณขนาดไม้เมื่อถอยลง
     # - n_steps: จำนวนขั้นสูงสุดในรอบสะสมหลัก
     buy_ladder:
-      d_buy: 0.015
+      d_buy: 0.02
       m_buy: 1.5
       n_steps: 10
       spacing_mode: fibo
@@ -798,12 +798,12 @@ pairs:
       max_total_quote: 0.0
 
     profit_trail:
-      p_min: 0.02
+      p_min: 0.025
       s1: 0.01
       m_step: 1.6
       tau: 0.7
-      p_lock_base: 0.005
-      p_lock_max: 0.02
+      p_lock_base: 0.007
+      p_lock_max: 0.03
       tau_min: 0.3
       no_loss_epsilon: 0.0018
 
@@ -814,7 +814,7 @@ pairs:
       beta_tau: 0.9
 
     time_caps:
-      T_idle_max_minutes: 45
+      T_idle_max_minutes: 70
       p_idle: 0.008
       T_total_cap_minutes: 180
       p_exit_min: 0.008
@@ -838,7 +838,7 @@ pairs:
       micro_oscillation:
         enabled: true
         window: 45
-        max_band_pct: 0.008
+        max_band_pct: 0.012
         min_swings: 5
         min_swing_pct: 0.0012
         entry_band_pct: 0.18
@@ -913,7 +913,7 @@ pairs:
     # - m_buy: ตัวคูณขนาดไม้เมื่อถอยลง
     # - n_steps: จำนวนขั้นสูงสุดในรอบสะสมหลัก
     buy_ladder:
-      d_buy: 0.015
+      d_buy: 0.02
       m_buy: 1.5
       n_steps: 10
       spacing_mode: fibo
@@ -926,12 +926,12 @@ pairs:
       max_total_quote: 0.0
 
     profit_trail:
-      p_min: 0.02
+      p_min: 0.025
       s1: 0.01
       m_step: 1.6
       tau: 0.7
-      p_lock_base: 0.005
-      p_lock_max: 0.02
+      p_lock_base: 0.007
+      p_lock_max: 0.03
       tau_min: 0.3
       no_loss_epsilon: 0.0018
 
@@ -942,7 +942,7 @@ pairs:
       beta_tau: 0.9
 
     time_caps:
-      T_idle_max_minutes: 45
+      T_idle_max_minutes: 70
       p_idle: 0.008
       T_total_cap_minutes: 180
       p_exit_min: 0.008
@@ -966,7 +966,7 @@ pairs:
       micro_oscillation:
         enabled: true
         window: 45
-        max_band_pct: 0.008
+        max_band_pct: 0.012
         min_swings: 5
         min_swing_pct: 0.0012
         entry_band_pct: 0.18
