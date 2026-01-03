@@ -681,12 +681,20 @@
       return resp.json();
     }
 
-    async function fetchHealth({ retriedWithProxy = false } = {}) {
+    async function fetchHealth({ retriedWithProxy = false, retriedWithoutProxy = false } = {}) {
       errorEl.hidden = true;
       metaEl.textContent = "Loading data...";
       try {
+        const usingProxy = proxyToggle?.checked;
         const resp = await fetch(apiUrl("/health"));
-        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        if (!resp.ok) {
+          if (usingProxy && resp.status === 403 && !retriedWithoutProxy) {
+            proxyToggle.checked = false;
+            persistProxyPref();
+            return fetchHealth({ retriedWithProxy, retriedWithoutProxy: true });
+          }
+          throw new Error(`HTTP ${resp.status}`);
+        }
         const data = await resp.json();
         lastData = data;
         render(data);
@@ -698,7 +706,7 @@
           return fetchHealth({ retriedWithProxy: true });
         }
         const proxyHint = proxyToggle?.checked
-          ? "CORS proxy is enabled but the request still failed."
+          ? "CORS proxy is enabled; if you still see HTTP 403/404, try disabling it and reloading."
           : "If loading from a local file, enable the CORS proxy toggle.";
         errorEl.textContent = `Failed to fetch data: ${err.message}. ${proxyHint}`;
         errorEl.hidden = false;
