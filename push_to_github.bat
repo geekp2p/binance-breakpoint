@@ -12,6 +12,20 @@ if "%BRANCH%"=="" (
 if "%BRANCH%"=="" set BRANCH=main
 
 echo Pushing local %BRANCH% to %REMOTE% (force-with-lease)...
+git fetch --quiet %REMOTE% %BRANCH% 2>nul
+if %ERRORLEVEL% NEQ 0 (
+  echo Could not pre-fetch %REMOTE%/%BRANCH%. Proceeding with push.
+)
+
+git rev-parse --verify %REMOTE%/%BRANCH% >nul 2>&1
+if %ERRORLEVEL% EQU 0 (
+  for /f "delims=" %%c in ('git rev-list --count %REMOTE%/%BRANCH%..%BRANCH% 2^>nul') do set AHEAD=%%c
+  if "%AHEAD%"=="0" (
+    echo No new commits to push. Remote %REMOTE%/%BRANCH% is already up-to-date.
+    exit /b 0
+  )
+)
+
 git push --force-with-lease %REMOTE% %BRANCH% || goto error
 echo Done: remote %REMOTE%/%BRANCH% now reflects local history.
 exit /b 0
