@@ -1045,8 +1045,8 @@ general:
     # ใช้ค่าคูณ custom หากต้องการ เช่น 0.8 สำหรับส่วนลด 20%
     fee_discount_factor: 1.0
   profit_recycling:
-    enabled: false
-    # 1/10 ของกำไรแต่ละรอบจะถูกกันไว้ซื้อ coin price discount (ดีฟอลต์ = symbol ปัจจุบัน)
+    enabled: true
+    # 1/10 ของกำไรแต่ละรอบจะถูกกันไว้ซื้อ coin price discount (ดีฟอลต์ = symbol ปัจจุบัน.)
     discount_allocation_pct: 0.1
     # รวมกำไรทุกคู่แล้วแบ่ง 1/20 ไปซื้อ BNB ลด fee
     bnb_allocation_pct: 0.05
