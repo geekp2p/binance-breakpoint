@@ -20,6 +20,7 @@ if %ERRORLEVEL% NEQ 0 (
 git diff --quiet --ignore-submodules HEAD -- 2>nul
 if %ERRORLEVEL% NEQ 0 (
   echo Working tree has uncommitted changes. Commit or stash them before pushing.
+  git status --short || echo (git status unavailable)
   exit /b 1
 )
 
