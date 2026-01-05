@@ -11,6 +11,17 @@ if "%BRANCH%"=="" (
 )
 if "%BRANCH%"=="" set BRANCH=main
 
+if /I "%BRANCH%"=="HEAD" (
+  echo Current HEAD is detached. Defaulting branch to main.
+  set BRANCH=main
+)
+
+git show-ref --verify --quiet refs/heads/%BRANCH%
+if %ERRORLEVEL% NEQ 0 (
+  echo Local branch %BRANCH% does not exist. Checkout the correct branch or specify one explicitly.
+  exit /b 1
+)
+
 git remote get-url %REMOTE% >nul 2>&1
 if %ERRORLEVEL% NEQ 0 (
   echo Remote %REMOTE% is not configured. Add it with:
