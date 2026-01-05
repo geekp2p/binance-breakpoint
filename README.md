@@ -21,6 +21,14 @@ docker compose up demo
 - `pull_from_github.bat` — ดึงและ reset ให้ตรงกับรีโมตสาขาที่เลือก (ดีฟอลต์: สาขาปัจจุบัน)
 - `commit_with_unittime.bat` — stage ทุกไฟล์และ commit ด้วยข้อความเป็น Unix time (skip หากไม่มีการเปลี่ยนแปลง)
 
+> ก่อนใช้สคริปต์ช่วยให้ push/pull ได้จริง ต้องเพิ่ม remote ของ GitHub ไว้ก่อน (ทำครั้งเดียว):
+> ```bash
+> git remote add origin https://github.com/<your-user>/binance-breakpoint.git
+> git fetch origin
+> git branch --set-upstream-to=origin/main main  # ถ้ายังไม่มีสาขา main ให้ checkout มาจากรีโมต
+> ```
+> จากนั้นใช้สคริปต์ได้ตามปกติ: `commit_with_unittime.bat` (commit), `push_to_github.bat` (ส่งขึ้น GitHub), `pull_from_github.bat` (ดึง/รีเซ็ตให้ตรงรีโมต)
+
 ### ตัวอย่างไฟล์ `.env`
 ไฟล์ `.env` ใช้สำหรับเก็บคีย์ Binance ของคุณ (ถูกใส่ใน `.gitignore` แล้ว):
 
