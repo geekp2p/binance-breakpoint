@@ -369,6 +369,11 @@
         <div class="pill" id="pnlSummary">-</div>
       </div>
       <div class="card">
+        <h3>Net PnL (after quote fees)</h3>
+        <div class="value" id="netPnl">-</div>
+        <div class="pill" id="netPnlMeta">Realized net / fees</div>
+      </div>
+      <div class="card">
         <h3>Strategy PnL mix</h3>
         <div class="value" id="strategyPnl">-</div>
         <div class="pill" id="strategyPnlMeta">Ladder / Micro</div>
@@ -800,6 +805,13 @@
       const feeSplitText = feesStrategyLabel(feeTotals);
       const feeMetaBase = `Quote ${fmtNumber(feeTotals.quote ?? 0, 4)} / BNB ${fmtNumber(feeTotals.bnb ?? 0, 4)}`;
       document.getElementById("feesMeta").textContent = feeSplitText ? `${feeMetaBase} | ${feeSplitText}` : feeMetaBase;
+
+      const quoteFees = feeTotals.quote ?? 0;
+      const netRealized = realized - quoteFees;
+      const netTotal = totalPnl - quoteFees;
+      document.getElementById("netPnl").innerHTML = formatPnl(netTotal);
+      document.getElementById("netPnlMeta").textContent =
+        `r ${fmtNumber(netRealized, 2)} | fees q ${fmtNumber(quoteFees, 4)} b ${fmtNumber(feeTotals.bnb ?? 0, 4)} (BNB not converted)`;
 
       const ladderTotalPnl = totalBreakdown.totals?.ladder ?? ladderRealized + ladderUnrealized;
       const microTotalPnl = totalBreakdown.totals?.micro ?? microRealized + microUnrealized;
