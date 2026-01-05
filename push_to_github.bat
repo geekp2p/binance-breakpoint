@@ -17,8 +17,15 @@ if %ERRORLEVEL% NEQ 0 (
   echo Could not pre-fetch %REMOTE%/%BRANCH%. Proceeding with push.
 )
 
+git diff --quiet --ignore-submodules HEAD -- 2>nul
+if %ERRORLEVEL% NEQ 0 (
+  echo Working tree has uncommitted changes. Commit or stash them before pushing.
+  exit /b 1
+)
+
 git rev-parse --verify %REMOTE%/%BRANCH% >nul 2>&1
 if %ERRORLEVEL% EQU 0 (
+  set AHEAD=0
   for /f "delims=" %%c in ('git rev-list --count %REMOTE%/%BRANCH%..%BRANCH% 2^>nul') do set AHEAD=%%c
   if "%AHEAD%"=="0" (
     echo No new commits to push. Remote %REMOTE%/%BRANCH% is already up-to-date.
