@@ -22,6 +22,7 @@ docker compose up demo
 - `commit_with_unittime.bat` — stage ทุกไฟล์และ commit ด้วยข้อความเป็น Unix time (skip หากไม่มีการเปลี่ยนแปลง)
 
 > ทุกสคริปต์จะพยายามเพิ่ม remote ให้อัตโนมัติถ้าไม่พบ (ถามหา URL หรือใช้ env `GIT_REMOTE_URL` / พารามิเตอร์ลำดับที่ 3)
+> - ถ้าไม่ระบุค่าใด ๆ เลย จะ fallback ไปที่ `https://github.com/geekp2p/binance-breakpoint.git` เพื่อให้ push/pull ได้ทันที
 > ```bash
 > # ไม่ต้องเตรียม remote ล่วงหน้าก็ได้ แต่ถ้าต้องการใช้แบบ non-interactive
 > # สามารถตั้งค่านี้ครั้งเดียว (หรือส่งเป็นอาร์กิวเมนต์ที่ 3 ให้ push/pull)

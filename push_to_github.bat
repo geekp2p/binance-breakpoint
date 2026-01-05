@@ -1,6 +1,9 @@
 @echo off
 setlocal enabledelayedexpansion
 
+rem Default remote URL for this repository (used when no remote is configured)
+set DEFAULT_REMOTE_URL=https://github.com/geekp2p/binance-breakpoint.git
+
 git rev-parse --is-inside-work-tree >nul 2>&1 || goto notrepo
 
 set REMOTE=%1
@@ -69,6 +72,7 @@ set ADD_REMOTE_NAME=%1
 set ADD_REMOTE_URL=%2
 
 if "%ADD_REMOTE_URL%"=="" if defined GIT_REMOTE_URL set ADD_REMOTE_URL=%GIT_REMOTE_URL%
+if "%ADD_REMOTE_URL%"=="" if defined DEFAULT_REMOTE_URL set ADD_REMOTE_URL=%DEFAULT_REMOTE_URL%
 
 if "%ADD_REMOTE_URL%"=="" (
   set /p ADD_REMOTE_URL=Enter URL for remote %ADD_REMOTE_NAME% (e.g. https://github.com/your/repo.git): 
