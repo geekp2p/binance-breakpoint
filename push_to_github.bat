@@ -11,6 +11,13 @@ if "%BRANCH%"=="" (
 )
 if "%BRANCH%"=="" set BRANCH=main
 
+git remote get-url %REMOTE% >nul 2>&1
+if %ERRORLEVEL% NEQ 0 (
+  echo Remote %REMOTE% is not configured. Add it with:
+  echo   git remote add %REMOTE% https://github.com/your/repo.git
+  exit /b 1
+)
+
 echo Pushing local %BRANCH% to %REMOTE% (force-with-lease)...
 git fetch --quiet %REMOTE% %BRANCH% 2>nul
 if %ERRORLEVEL% NEQ 0 (
