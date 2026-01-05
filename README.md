@@ -16,6 +16,11 @@ docker compose up backtest
 docker compose up demo
 ```
 
+## Git helper scripts (Windows)
+- `push_to_github.bat` — ป้องกันการ push ถ้ายังมีไฟล์ค้าง (uncommitted) และเตือนให้แก้ก่อน
+- `pull_from_github.bat` — ดึงและ reset ให้ตรงกับรีโมตสาขาที่เลือก (ดีฟอลต์: สาขาปัจจุบัน)
+- `commit_with_unittime.bat` — stage ทุกไฟล์และ commit ด้วยข้อความเป็น Unix time (skip หากไม่มีการเปลี่ยนแปลง)
+
 ### ตัวอย่างไฟล์ `.env`
 ไฟล์ `.env` ใช้สำหรับเก็บคีย์ Binance ของคุณ (ถูกใส่ใน `.gitignore` แล้ว):
 
