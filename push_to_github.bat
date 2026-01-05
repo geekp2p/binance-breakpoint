@@ -28,9 +28,8 @@ if %ERRORLEVEL% NEQ 0 (
 
 git remote get-url %REMOTE% >nul 2>&1
 if %ERRORLEVEL% NEQ 0 (
-  echo Remote %REMOTE% is not configured. Add it with:
-  echo   git remote add %REMOTE% https://github.com/your/repo.git
-  exit /b 1
+  call :add_remote %REMOTE% %3
+  if %ERRORLEVEL% NEQ 0 exit /b %ERRORLEVEL%
 )
 
 echo Pushing local %BRANCH% to %REMOTE% (force-with-lease)...
@@ -63,6 +62,26 @@ echo Sending commits (ahead by %AHEAD% of %REMOTE%/%BRANCH%)...
 
 git push --force-with-lease %REMOTE% %BRANCH% || goto error
 echo Done: remote %REMOTE%/%BRANCH% now reflects local history.
+exit /b 0
+
+:add_remote
+set ADD_REMOTE_NAME=%1
+set ADD_REMOTE_URL=%2
+
+if "%ADD_REMOTE_URL%"=="" if defined GIT_REMOTE_URL set ADD_REMOTE_URL=%GIT_REMOTE_URL%
+
+if "%ADD_REMOTE_URL%"=="" (
+  set /p ADD_REMOTE_URL=Enter URL for remote %ADD_REMOTE_NAME% (e.g. https://github.com/your/repo.git): 
+)
+
+if "%ADD_REMOTE_URL%"=="" (
+  echo Remote %ADD_REMOTE_NAME% is not configured and no URL was provided.
+  exit /b 1
+)
+
+git remote add %ADD_REMOTE_NAME% %ADD_REMOTE_URL% || exit /b 1
+echo Added remote %ADD_REMOTE_NAME% with %ADD_REMOTE_URL%.
+git fetch --quiet %ADD_REMOTE_NAME% 2>nul
 exit /b 0
 
 :notrepo
