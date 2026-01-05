@@ -30,13 +30,13 @@ pairs:
       max_total_quote: 0.0
 
     profit_trail:
-      p_min: 0.025
-      s1: 0.01
+      p_min: 0.04
+      s1: 0.012
       m_step: 1.6
-      tau: 0.7
-      p_lock_base: 0.007
-      p_lock_max: 0.03
-      tau_min: 0.3
+      tau: 0.8
+      p_lock_base: 0.01
+      p_lock_max: 0.05
+      tau_min: 0.4
       no_loss_epsilon: 0.0018
 
     time_martingale:
@@ -46,10 +46,10 @@ pairs:
       beta_tau: 0.9
 
     time_caps:
-      T_idle_max_minutes: 70
-      p_idle: 0.008
-      T_total_cap_minutes: 180
-      p_exit_min: 0.008
+      T_idle_max_minutes: 100
+      p_idle: 0.012
+      T_total_cap_minutes: 240
+      p_exit_min: 0.012
 
     features:
       scalp_mode:
@@ -60,9 +60,9 @@ pairs:
         base_drop_pct: 0.03
         min_drop_pct: 0.015
         max_drop_pct: 0.06
-        base_take_profit_pct: 0.01
-        min_take_profit_pct: 0.008
-        max_take_profit_pct: 0.02
+        base_take_profit_pct: 0.015
+        min_take_profit_pct: 0.012
+        max_take_profit_pct: 0.03
         volatility_ref_pct: 0.04
         scale_strength: 0.6
         order_pct_allocation: 0.33
@@ -74,10 +74,10 @@ pairs:
         min_swings: 5
         min_swing_pct: 0.0012
         entry_band_pct: 0.18
-        take_profit_pct: 0.003
+        take_profit_pct: 0.005
         stop_break_pct: 0.0035
         # Minimum margin above break-even (after fees) for micro exits
-        min_profit_pct: 0.0025
+        min_profit_pct: 0.004
         volatility_stop_mult: 1.0
         volatility_take_profit_mult: 0.7
         volatility_reentry_mult: 0.9
@@ -158,13 +158,13 @@ pairs:
       max_total_quote: 0.0
 
     profit_trail:
-      p_min: 0.025
-      s1: 0.01
+      p_min: 0.04
+      s1: 0.012
       m_step: 1.6
-      tau: 0.7
-      p_lock_base: 0.007
-      p_lock_max: 0.03
-      tau_min: 0.3
+      tau: 0.8
+      p_lock_base: 0.01
+      p_lock_max: 0.05
+      tau_min: 0.4
       no_loss_epsilon: 0.0018
 
     time_martingale:
@@ -174,10 +174,10 @@ pairs:
       beta_tau: 0.9
 
     time_caps:
-      T_idle_max_minutes: 70
-      p_idle: 0.008
-      T_total_cap_minutes: 180
-      p_exit_min: 0.008
+      T_idle_max_minutes: 100
+      p_idle: 0.012
+      T_total_cap_minutes: 240
+      p_exit_min: 0.012
 
     features:
       scalp_mode:
@@ -188,9 +188,9 @@ pairs:
         base_drop_pct: 0.03
         min_drop_pct: 0.015
         max_drop_pct: 0.06
-        base_take_profit_pct: 0.01
-        min_take_profit_pct: 0.008
-        max_take_profit_pct: 0.02
+        base_take_profit_pct: 0.015
+        min_take_profit_pct: 0.012
+        max_take_profit_pct: 0.03
         volatility_ref_pct: 0.04
         scale_strength: 0.6
         order_pct_allocation: 0.33
@@ -202,10 +202,10 @@ pairs:
         min_swings: 5
         min_swing_pct: 0.0012
         entry_band_pct: 0.18
-        take_profit_pct: 0.003
+        take_profit_pct: 0.005
         stop_break_pct: 0.0035
         # Minimum margin above break-even (after fees) for micro exits
-        min_profit_pct: 0.0025
+        min_profit_pct: 0.004
         volatility_stop_mult: 1.0
         volatility_take_profit_mult: 0.7
         volatility_reentry_mult: 0.9
@@ -286,13 +286,13 @@ pairs:
       max_total_quote: 0.0
 
     profit_trail:
-      p_min: 0.025
-      s1: 0.01
+      p_min: 0.04
+      s1: 0.012
       m_step: 1.6
-      tau: 0.7
-      p_lock_base: 0.007
-      p_lock_max: 0.03
-      tau_min: 0.3
+      tau: 0.8
+      p_lock_base: 0.01
+      p_lock_max: 0.05
+      tau_min: 0.4
       no_loss_epsilon: 0.0018
 
     time_martingale:
@@ -302,10 +302,10 @@ pairs:
       beta_tau: 0.9
 
     time_caps:
-      T_idle_max_minutes: 70
-      p_idle: 0.008
-      T_total_cap_minutes: 180
-      p_exit_min: 0.008
+      T_idle_max_minutes: 100
+      p_idle: 0.012
+      T_total_cap_minutes: 240
+      p_exit_min: 0.012
 
     features:
       scalp_mode:
@@ -316,9 +316,9 @@ pairs:
         base_drop_pct: 0.03
         min_drop_pct: 0.015
         max_drop_pct: 0.06
-        base_take_profit_pct: 0.01
-        min_take_profit_pct: 0.008
-        max_take_profit_pct: 0.02
+        base_take_profit_pct: 0.015
+        min_take_profit_pct: 0.012
+        max_take_profit_pct: 0.03
         volatility_ref_pct: 0.04
         scale_strength: 0.6
         order_pct_allocation: 0.33
@@ -330,10 +330,10 @@ pairs:
         min_swings: 5
         min_swing_pct: 0.0012
         entry_band_pct: 0.18
-        take_profit_pct: 0.003
+        take_profit_pct: 0.005
         stop_break_pct: 0.0035
         # Minimum margin above break-even (after fees) for micro exits
-        min_profit_pct: 0.0025
+        min_profit_pct: 0.004
         volatility_stop_mult: 1.0
         volatility_take_profit_mult: 0.7
         volatility_reentry_mult: 0.9
@@ -414,13 +414,13 @@ pairs:
       max_total_quote: 0.0
 
     profit_trail:
-      p_min: 0.025
-      s1: 0.01
+      p_min: 0.04
+      s1: 0.012
       m_step: 1.6
-      tau: 0.7
-      p_lock_base: 0.007
-      p_lock_max: 0.03
-      tau_min: 0.3
+      tau: 0.8
+      p_lock_base: 0.01
+      p_lock_max: 0.05
+      tau_min: 0.4
       no_loss_epsilon: 0.0018
 
     time_martingale:
@@ -430,10 +430,10 @@ pairs:
       beta_tau: 0.9
 
     time_caps:
-      T_idle_max_minutes: 70
-      p_idle: 0.008
-      T_total_cap_minutes: 180
-      p_exit_min: 0.008
+      T_idle_max_minutes: 100
+      p_idle: 0.012
+      T_total_cap_minutes: 240
+      p_exit_min: 0.012
 
     features:
       scalp_mode:
@@ -444,9 +444,9 @@ pairs:
         base_drop_pct: 0.03
         min_drop_pct: 0.015
         max_drop_pct: 0.06
-        base_take_profit_pct: 0.01
-        min_take_profit_pct: 0.008
-        max_take_profit_pct: 0.02
+        base_take_profit_pct: 0.015
+        min_take_profit_pct: 0.012
+        max_take_profit_pct: 0.03
         volatility_ref_pct: 0.04
         scale_strength: 0.6
         order_pct_allocation: 0.33
@@ -458,10 +458,10 @@ pairs:
         min_swings: 5
         min_swing_pct: 0.0012
         entry_band_pct: 0.18
-        take_profit_pct: 0.003
+        take_profit_pct: 0.005
         stop_break_pct: 0.0035
         # Minimum margin above break-even (after fees) for micro exits
-        min_profit_pct: 0.0025
+        min_profit_pct: 0.004
         volatility_stop_mult: 1.0
         volatility_take_profit_mult: 0.7
         volatility_reentry_mult: 0.9
@@ -542,13 +542,13 @@ pairs:
       max_total_quote: 0.0
 
     profit_trail:
-      p_min: 0.025
-      s1: 0.01
+      p_min: 0.04
+      s1: 0.012
       m_step: 1.6
-      tau: 0.7
-      p_lock_base: 0.007
-      p_lock_max: 0.03
-      tau_min: 0.3
+      tau: 0.8
+      p_lock_base: 0.01
+      p_lock_max: 0.05
+      tau_min: 0.4
       no_loss_epsilon: 0.0018
 
     time_martingale:
@@ -558,10 +558,10 @@ pairs:
       beta_tau: 0.9
 
     time_caps:
-      T_idle_max_minutes: 70
-      p_idle: 0.008
-      T_total_cap_minutes: 180
-      p_exit_min: 0.008
+      T_idle_max_minutes: 100
+      p_idle: 0.012
+      T_total_cap_minutes: 240
+      p_exit_min: 0.012
 
     features:
       scalp_mode:
@@ -572,9 +572,9 @@ pairs:
         base_drop_pct: 0.03
         min_drop_pct: 0.015
         max_drop_pct: 0.06
-        base_take_profit_pct: 0.01
-        min_take_profit_pct: 0.008
-        max_take_profit_pct: 0.02
+        base_take_profit_pct: 0.015
+        min_take_profit_pct: 0.012
+        max_take_profit_pct: 0.03
         volatility_ref_pct: 0.04
         scale_strength: 0.6
         order_pct_allocation: 0.33
@@ -586,10 +586,10 @@ pairs:
         min_swings: 5
         min_swing_pct: 0.0012
         entry_band_pct: 0.18
-        take_profit_pct: 0.003
+        take_profit_pct: 0.005
         stop_break_pct: 0.0035
         # Minimum margin above break-even (after fees) for micro exits
-        min_profit_pct: 0.0025
+        min_profit_pct: 0.004
         volatility_stop_mult: 1.0
         volatility_take_profit_mult: 0.7
         volatility_reentry_mult: 0.9
@@ -670,13 +670,13 @@ pairs:
       max_total_quote: 0.0
 
     profit_trail:
-      p_min: 0.025
-      s1: 0.01
+      p_min: 0.04
+      s1: 0.012
       m_step: 1.6
-      tau: 0.7
-      p_lock_base: 0.007
-      p_lock_max: 0.03
-      tau_min: 0.3
+      tau: 0.8
+      p_lock_base: 0.01
+      p_lock_max: 0.05
+      tau_min: 0.4
       no_loss_epsilon: 0.0018
 
     time_martingale:
@@ -686,10 +686,10 @@ pairs:
       beta_tau: 0.9
 
     time_caps:
-      T_idle_max_minutes: 70
-      p_idle: 0.008
-      T_total_cap_minutes: 180
-      p_exit_min: 0.008
+      T_idle_max_minutes: 100
+      p_idle: 0.012
+      T_total_cap_minutes: 240
+      p_exit_min: 0.012
 
     features:
       scalp_mode:
@@ -700,9 +700,9 @@ pairs:
         base_drop_pct: 0.03
         min_drop_pct: 0.015
         max_drop_pct: 0.06
-        base_take_profit_pct: 0.01
-        min_take_profit_pct: 0.008
-        max_take_profit_pct: 0.02
+        base_take_profit_pct: 0.015
+        min_take_profit_pct: 0.012
+        max_take_profit_pct: 0.03
         volatility_ref_pct: 0.04
         scale_strength: 0.6
         order_pct_allocation: 0.33
@@ -714,10 +714,10 @@ pairs:
         min_swings: 5
         min_swing_pct: 0.0012
         entry_band_pct: 0.18
-        take_profit_pct: 0.003
+        take_profit_pct: 0.005
         stop_break_pct: 0.0035
         # Minimum margin above break-even (after fees) for micro exits
-        min_profit_pct: 0.0025
+        min_profit_pct: 0.004
         volatility_stop_mult: 1.0
         volatility_take_profit_mult: 0.7
         volatility_reentry_mult: 0.9
@@ -798,13 +798,13 @@ pairs:
       max_total_quote: 0.0
 
     profit_trail:
-      p_min: 0.025
-      s1: 0.01
+      p_min: 0.04
+      s1: 0.012
       m_step: 1.6
-      tau: 0.7
-      p_lock_base: 0.007
-      p_lock_max: 0.03
-      tau_min: 0.3
+      tau: 0.8
+      p_lock_base: 0.01
+      p_lock_max: 0.05
+      tau_min: 0.4
       no_loss_epsilon: 0.0018
 
     time_martingale:
@@ -814,10 +814,10 @@ pairs:
       beta_tau: 0.9
 
     time_caps:
-      T_idle_max_minutes: 70
-      p_idle: 0.008
-      T_total_cap_minutes: 180
-      p_exit_min: 0.008
+      T_idle_max_minutes: 100
+      p_idle: 0.012
+      T_total_cap_minutes: 240
+      p_exit_min: 0.012
 
     features:
       scalp_mode:
@@ -828,9 +828,9 @@ pairs:
         base_drop_pct: 0.03
         min_drop_pct: 0.015
         max_drop_pct: 0.06
-        base_take_profit_pct: 0.01
-        min_take_profit_pct: 0.008
-        max_take_profit_pct: 0.02
+        base_take_profit_pct: 0.015
+        min_take_profit_pct: 0.012
+        max_take_profit_pct: 0.03
         volatility_ref_pct: 0.04
         scale_strength: 0.6
         order_pct_allocation: 0.33
@@ -842,10 +842,10 @@ pairs:
         min_swings: 5
         min_swing_pct: 0.0012
         entry_band_pct: 0.18
-        take_profit_pct: 0.003
+        take_profit_pct: 0.005
         stop_break_pct: 0.0035
         # Minimum margin above break-even (after fees) for micro exits
-        min_profit_pct: 0.0025
+        min_profit_pct: 0.004
         volatility_stop_mult: 1.0
         volatility_take_profit_mult: 0.7
         volatility_reentry_mult: 0.9
@@ -926,13 +926,13 @@ pairs:
       max_total_quote: 0.0
 
     profit_trail:
-      p_min: 0.025
-      s1: 0.01
+      p_min: 0.04
+      s1: 0.012
       m_step: 1.6
-      tau: 0.7
-      p_lock_base: 0.007
-      p_lock_max: 0.03
-      tau_min: 0.3
+      tau: 0.8
+      p_lock_base: 0.01
+      p_lock_max: 0.05
+      tau_min: 0.4
       no_loss_epsilon: 0.0018
 
     time_martingale:
@@ -942,10 +942,10 @@ pairs:
       beta_tau: 0.9
 
     time_caps:
-      T_idle_max_minutes: 70
-      p_idle: 0.008
-      T_total_cap_minutes: 180
-      p_exit_min: 0.008
+      T_idle_max_minutes: 100
+      p_idle: 0.012
+      T_total_cap_minutes: 240
+      p_exit_min: 0.012
 
     features:
       scalp_mode:
@@ -956,9 +956,9 @@ pairs:
         base_drop_pct: 0.03
         min_drop_pct: 0.015
         max_drop_pct: 0.06
-        base_take_profit_pct: 0.01
-        min_take_profit_pct: 0.008
-        max_take_profit_pct: 0.02
+        base_take_profit_pct: 0.015
+        min_take_profit_pct: 0.012
+        max_take_profit_pct: 0.03
         volatility_ref_pct: 0.04
         scale_strength: 0.6
         order_pct_allocation: 0.33
@@ -970,10 +970,10 @@ pairs:
         min_swings: 5
         min_swing_pct: 0.0012
         entry_band_pct: 0.18
-        take_profit_pct: 0.003
+        take_profit_pct: 0.005
         stop_break_pct: 0.0035
         # Minimum margin above break-even (after fees) for micro exits
-        min_profit_pct: 0.0025
+        min_profit_pct: 0.004
         volatility_stop_mult: 1.0
         volatility_take_profit_mult: 0.7
         volatility_reentry_mult: 0.9
