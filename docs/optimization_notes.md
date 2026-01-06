@@ -44,6 +44,15 @@ while other pairs behave normally:
 > still idles after a full refresh, consider widening `d_buy` and loosening the
 > micro bands for that symbol using the override snippet below.
 
+**Automation helper**
+- Generate and (optionally) write the staged overrides with:
+  ```bash
+  python -m src.stuck_pair_override DCRUSDT --stage baseline
+  python -m src.stuck_pair_override DCRUSDT --stage follow-up --config config.yaml --write
+  ```
+  The first command prints the 2–3 day nudge snippet; the second escalates to the 7–14 day follow-up and patches `config.yaml`
+  directly.
+
 **Time-boxed override cycle**
 - If nothing fires for **2–3 days**, temporarily widen bands or `d_buy` for the stuck pair only, watch fills for another couple of days, then roll the override back to baseline.
 - If after **7–14 days** the pair is still idle, repeat with a slightly larger step (e.g., another +0.005 to `d_buy` or +0.02 to `entry_band_pct`) and again revert once activity resumes.
