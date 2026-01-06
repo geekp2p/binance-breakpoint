@@ -71,6 +71,7 @@ def run(cfg_path, out_dir):
             micro=pc.get("features",{}).get("micro_oscillation", {"enabled": False}),
             adaptive_ladder=pc.get("features",{}).get("adaptive_ladder", {"enabled": False}),
             anchor_drift=pc.get("features",{}).get("anchor_drift", {"enabled": False}),
+            stuck_recovery=pc.get("features",{}).get("stuck_recovery", {}),
         )
         df = load_data_for_pair(paircfg, general, api)
         res = run_backtest_for_pair(df, paircfg)

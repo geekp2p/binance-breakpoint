@@ -52,6 +52,16 @@ while other pairs behave normally:
   ```
   The first command prints the 2–3 day nudge snippet; the second escalates to the 7–14 day follow-up and patches `config.yaml`
   directly.
+- To automate the same nudges inside the core strategy without touching files, enable the built-in stuck recovery guardrail:
+  ```yaml
+  features:
+    stuck_recovery:
+      enabled: true
+      stage1_bars: 4320   # trigger after ~3 days of no trades
+      stage2_bars: 10080  # trigger after ~7 days
+  ```
+  When active, the strategy widens ladder spacing and relaxes micro bands in two stages, temporarily allowing micro entries even
+  with core inventory open. Any fill (ladder/micro/scalp) resets the overrides back to the baseline config.
 
 **Time-boxed override cycle**
 - If nothing fires for **2–3 days**, temporarily widen bands or `d_buy` for the stuck pair only, watch fills for another couple of days, then roll the override back to baseline.
