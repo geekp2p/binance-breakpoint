@@ -11,6 +11,39 @@ These suggestions are derived from the current production-style config snapshot 
 
 ## Recommended adjustments
 
+### Quick playbook when a pair gets stuck (ladder idle, micro skipping)
+If a specific symbol (e.g., **DCRUSDT**) stops firing new ladder orders and the
+activity log shows repeated `MICRO_BUY_SKIPPED OPEN_INVENTORY` entries for hours
+while other pairs behave normally:
+
+1. **Force a ladder refresh without changing global config**
+   - In the UI, hit **"Refresh" → "Resume all"** to re-run health checks and
+     trigger an immediate ladder rebuild for that pair.
+   - If the pair remains in `ACCUMULATE` with ammo left but no pending orders,
+     toggle **Pause → Resume** for just that symbol to reset its internal
+     timers.
+
+2. **Clear stale micro cooldowns**
+   - Micro is suppressed while core inventory is open. If you want micro to
+     resume before the ladder scales out, temporarily disable and re-enable the
+     micro module for that symbol in the UI; this resets the
+     `micro_cooldown_until_bar` gate and rechecks entry bands on the next bar.
+
+3. **Check anchor shifts**
+   - Frequent `LADDER_REBUILT ANCHOR_SHIFT` with no new orders usually means the
+     anchor keeps drifting upward with price. Hit **"Simulate" → "Stop" →
+     "Live"** to pin a fresh anchor from the latest close, then watch whether
+     the next buy level moves into reach.
+
+4. **Escalate only for the affected pair**
+   - Apply the overrides in the next section to DCRUSDT only (do not change
+     the base config). Start with the micro band tweaks and wider `d_buy`; keep
+     the successful settings for pairs like ZECUSDT untouched.
+
+> These steps are reversible and keep your global config intact. If the pair
+> still idles after a full refresh, consider widening `d_buy` and loosening the
+> micro bands for that symbol using the override snippet below.
+
 ### 1) Let micro-oscillation actually fire
 - Increase `max_band_pct` from **0.008 → 0.012** so the band covers more intra-bar noise.
 - Reduce `entry_band_pct` from **0.18 → 0.12** so the entry threshold is reachable more often.
