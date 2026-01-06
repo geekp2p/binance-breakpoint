@@ -14,6 +14,7 @@ from .strategy import (
     TimeCapsConf,
     ScalpModeConf,
     MicroOscillationConf,
+    StuckRecoveryConf,
     BuyTheDipConf,
     SellAtHeightConf,
 )
@@ -67,11 +68,14 @@ class PairConfig:
     buy_base_order_quote: float | None = None
     buy_max_quote_per_leg: float = 0.0
     buy_max_total_quote: float = 0.0
+    stuck_recovery: Optional[Dict[str, Any]] = None
 
 def init_state_from_config(cfg: PairConfig):
     fees = cfg.fees_maker if cfg.use_maker else cfg.fees_taker
     return StrategyState(
-        fees_buy=fees, fees_sell=fees, b_alloc=cfg.b_alloc,
+        fees_buy=fees,
+        fees_sell=fees,
+        b_alloc=cfg.b_alloc,
         buy=BuyLadderConf(
             d_buy=cfg.buy_d,
             m_buy=cfg.buy_m,
@@ -86,23 +90,42 @@ def init_state_from_config(cfg: PairConfig):
             max_quote_per_leg=cfg.buy_max_quote_per_leg,
             max_total_quote=cfg.buy_max_total_quote,
         ),
-        trail=ProfitTrailConf(p_min=cfg.p_min, s1=cfg.s1, m_step=cfg.m_step, tau=cfg.tau,
-                              p_lock_base=cfg.p_lock_base, p_lock_max=cfg.p_lock_max,
-                              tau_min=cfg.tau_min, no_loss_epsilon=cfg.no_loss_epsilon),
-        tmart=TimeMartingaleConf(W1_minutes=cfg.W1_minutes, m_time=cfg.m_time,
-                                 delta_lock=cfg.delta_lock, beta_tau=cfg.beta_tau),
-        tcaps=TimeCapsConf(T_idle_max_minutes=cfg.T_idle_max_minutes, p_idle=cfg.p_idle,
-                           T_total_cap_minutes=cfg.T_total_cap_minutes, p_exit_min=cfg.p_exit_min),
-                           scalp=ScalpModeConf(**cfg.scalp),
+        trail=ProfitTrailConf(
+            p_min=cfg.p_min,
+            s1=cfg.s1,
+            m_step=cfg.m_step,
+            tau=cfg.tau,
+            p_lock_base=cfg.p_lock_base,
+            p_lock_max=cfg.p_lock_max,
+            tau_min=cfg.tau_min,
+            no_loss_epsilon=cfg.no_loss_epsilon,
+        ),
+        tmart=TimeMartingaleConf(
+            W1_minutes=cfg.W1_minutes,
+            m_time=cfg.m_time,
+            delta_lock=cfg.delta_lock,
+            beta_tau=cfg.beta_tau,
+        ),
+        tcaps=TimeCapsConf(
+            T_idle_max_minutes=cfg.T_idle_max_minutes,
+            p_idle=cfg.p_idle,
+            T_total_cap_minutes=cfg.T_total_cap_minutes,
+            p_exit_min=cfg.p_exit_min,
+        ),
+        scalp=ScalpModeConf(**cfg.scalp),
         micro=MicroOscillationConf(**cfg.micro),
-        btd=BuyTheDipConf(**cfg.btd), sah=SellAtHeightConf(**cfg.sah),
+        btd=BuyTheDipConf(**cfg.btd),
+        sah=SellAtHeightConf(**cfg.sah),
         adaptive=AdaptiveLadderConf(**cfg.adaptive_ladder),
         anchor=AnchorDriftConf(**cfg.anchor_drift),
-        snapshot_every_bars=cfg.snapshot_every_bars, use_maker=cfg.use_maker
+        stuck=StuckRecoveryConf(**(cfg.stuck_recovery or {})),
+        snapshot_every_bars=cfg.snapshot_every_bars,
+        use_maker=cfg.use_maker,
     )
 
 def prepare_ladder(state: StrategyState, P0: float):
     state._set_initial_d_buy()
+    state._init_stuck_baselines()
     state.adaptive_ready = False
     state.volatility_samples = []
     state.rebuild_ladder(P0)

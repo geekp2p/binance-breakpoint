@@ -83,6 +83,7 @@ def build_pair_config(raw: Dict, general: Dict) -> PairConfig:
         sah=raw.get("features", {}).get("sell_at_height", {"enabled": False}),
         adaptive_ladder=raw.get("features", {}).get("adaptive_ladder", {"enabled": False}),
         anchor_drift=raw.get("features", {}).get("anchor_drift", {"enabled": False}),
+        stuck_recovery=raw.get("features", {}).get("stuck_recovery", {}),
     )
 
 
@@ -117,6 +118,10 @@ def reset_round(state, price: float, ts: datetime) -> None:
     state.sah_last_arm_ts = None
     state.btd_cooldown_until = None
     state.sah_cooldown_until = None
+    state.stuck_stage = 0
+    state.stuck_allow_micro_inventory = False
+    state.last_activity_bar = state.bar_index
+    state.stuck_last_stage_bar = state.bar_index
     prepare_ladder(state, price)
 
 

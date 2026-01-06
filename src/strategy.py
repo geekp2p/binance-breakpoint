@@ -124,6 +124,21 @@ class MicroOscillationConf:
     min_exit_notional: float = 1e-06
     min_exit_qty: float = 1e-06
 
+
+@dataclass
+class StuckRecoveryConf:
+    enabled: bool = False
+    stage1_bars: int = 4320  # ~3 days on 1m bars
+    stage2_bars: int = 10080  # ~7 days on 1m bars
+    stage1_d_buy: Optional[float] = 0.02
+    stage2_d_buy: Optional[float] = 0.025
+    stage1_entry_band_pct: Optional[float] = 0.12
+    stage2_entry_band_pct: Optional[float] = 0.14
+    stage1_max_band_pct: Optional[float] = 0.012
+    stage2_max_band_pct: Optional[float] = 0.014
+    allow_micro_with_inventory: bool = True
+    reset_micro_cooldown: bool = True
+
 # --- Scaffolds ---
 @dataclass
 class BuyTheDipConf:
@@ -168,6 +183,7 @@ class StrategyState:
     btd: BuyTheDipConf
     sah: SellAtHeightConf
     micro: MicroOscillationConf
+    stuck: StuckRecoveryConf = field(default_factory=StuckRecoveryConf)
     snapshot_every_bars: int
     use_maker: bool
 
@@ -233,6 +249,15 @@ class StrategyState:
     micro_tp_markup_pct: float = 0.0
     micro_skip_log_until_bar: Dict[str, int] = field(default_factory=dict)
 
+    # Stuck recovery state
+    stuck_stage: int = 0
+    stuck_last_stage_bar: int = 0
+    last_activity_bar: int = 0
+    stuck_base_d_buy: Optional[float] = None
+    stuck_base_micro_entry_pct: Optional[float] = None
+    stuck_base_micro_band_pct: Optional[float] = None
+    stuck_allow_micro_inventory: bool = False
+
     def _remaining_quote_allocation(self) -> float:
         effective_alloc = min(self.b_alloc, self.buy.max_total_quote) if self.buy.max_total_quote > 0 else self.b_alloc
         spent = (
@@ -256,6 +281,86 @@ class StrategyState:
             self.current_d_buy = self.adaptive.bootstrap_d_buy
         else:
             self.current_d_buy = self.buy.d_buy
+
+    def _init_stuck_baselines(self):
+        if self.stuck_base_d_buy is None:
+            self.stuck_base_d_buy = self.buy.d_buy
+        if self.stuck_base_micro_entry_pct is None:
+            self.stuck_base_micro_entry_pct = getattr(self.micro, "entry_band_pct", None)
+        if self.stuck_base_micro_band_pct is None:
+            self.stuck_base_micro_band_pct = getattr(self.micro, "max_band_pct", None)
+
+    def _mark_activity(self, ts, log_events: Optional[List[Dict[str, Any]]] = None, reason: str = "ACTIVITY"):
+        self.last_activity_bar = self.bar_index
+        if self.stuck_stage > 0:
+            self._restore_stuck_baseline(ts, log_events, reason=f"RESET_{reason}")
+
+    def _stuck_micro_allowed_with_inventory(self) -> bool:
+        return self.stuck.enabled and self.stuck_stage > 0 and self.stuck.allow_micro_with_inventory
+
+    def _maybe_apply_stuck_recovery(self, ts, price_ref: Optional[float], log_events: List[Dict[str, Any]]):
+        if not self.stuck.enabled:
+            return
+        self._init_stuck_baselines()
+
+        inactive_bars = max(self.bar_index - self.last_activity_bar, 0)
+        target_stage = 0
+        if inactive_bars >= max(1, int(self.stuck.stage2_bars)):
+            target_stage = 2
+        elif inactive_bars >= max(1, int(self.stuck.stage1_bars)):
+            target_stage = 1
+
+        if target_stage <= self.stuck_stage:
+            return
+
+        self._activate_stuck_stage(target_stage, ts, price_ref, log_events, inactive_bars)
+
+    def _activate_stuck_stage(
+        self, stage: int, ts, price_ref: Optional[float], log_events: List[Dict[str, Any]], inactive_bars: int
+    ):
+        self.stuck_stage = stage
+        self.stuck_last_stage_bar = self.bar_index
+
+        updates: Dict[str, Any] = {"stage": stage, "inactive_bars": inactive_bars}
+        if stage == 1:
+            d_buy_target = self.stuck.stage1_d_buy
+            entry_target = self.stuck.stage1_entry_band_pct
+            band_target = self.stuck.stage1_max_band_pct
+        else:
+            d_buy_target = self.stuck.stage2_d_buy
+            entry_target = self.stuck.stage2_entry_band_pct
+            band_target = self.stuck.stage2_max_band_pct
+
+        if d_buy_target is not None:
+            self.current_d_buy = max(self.current_d_buy, d_buy_target)
+            updates["d_buy"] = self.current_d_buy
+
+        if entry_target is not None:
+            self.micro.entry_band_pct = min(self.micro.entry_band_pct, entry_target)
+            updates["micro_entry_band_pct"] = self.micro.entry_band_pct
+
+        if band_target is not None:
+            self.micro.max_band_pct = max(self.micro.max_band_pct, band_target)
+            updates["micro_max_band_pct"] = self.micro.max_band_pct
+
+        self.stuck_allow_micro_inventory = self.stuck.allow_micro_with_inventory
+        if self.stuck.reset_micro_cooldown:
+            self.micro_cooldown_until_bar = self.bar_index
+        if price_ref:
+            self.rebuild_ladder(price_ref, ts, log_events, reason="STUCK_RECOVERY", preserve_progress=True)
+        log_events.append({"ts": ts, "event": "STUCK_RECOVERY", **updates})
+
+    def _restore_stuck_baseline(self, ts, log_events: Optional[List[Dict[str, Any]]], reason: str):
+        self.stuck_stage = 0
+        self.stuck_allow_micro_inventory = False
+        if self.stuck_base_d_buy is not None:
+            self.current_d_buy = self.stuck_base_d_buy
+        if self.stuck_base_micro_entry_pct is not None:
+            self.micro.entry_band_pct = self.stuck_base_micro_entry_pct
+        if self.stuck_base_micro_band_pct is not None:
+            self.micro.max_band_pct = self.stuck_base_micro_band_pct
+        if log_events is not None:
+            log_events.append({"ts": ts, "event": "STUCK_RECOVERY_RESET", "reason": reason})
 
     def rebuild_ladder(self, base_price: float, ts=None, log_events: Optional[List[Dict[str, Any]]] = None,
                        reason: str = "RESET", preserve_progress: bool = False):
@@ -660,6 +765,7 @@ class StrategyState:
             "target": target,
             "trade_idx": self.scalp_trades_done,
         })
+        self._mark_activity(ts, log_events, reason="SCALP_BUY")
 
     def _check_scalp_take_profit(self, ts, h, log_events: List[Dict[str, Any]]):
         if not self.scalp_positions:
@@ -681,6 +787,7 @@ class StrategyState:
                     "proceeds": proceeds,
                     "pnl": pnl,
                 })
+                self._mark_activity(ts, log_events, reason="SCALP_TP")
             else:
                 remaining_positions.append(pos)
         self.scalp_positions = remaining_positions
@@ -820,7 +927,7 @@ class StrategyState:
             )
             return
         core = self._core_position(include_micro=False)
-        if core["qty"] > 0:
+        if core["qty"] > 0 and not self._stuck_micro_allowed_with_inventory():
             self._log_micro_skip(
                 ts,
                 "OPEN_INVENTORY",
@@ -949,7 +1056,8 @@ class StrategyState:
             "target": target,
             "stop": stop,
             "band_pct": snap["band_pct"],
-        })      
+        })
+        self._mark_activity(ts, log_events, reason="MICRO_BUY")
 
     def _check_micro_take_profit(self, ts, h, l, log_events: List[Dict[str, Any]]):
         if not self.micro_positions:
@@ -1102,7 +1210,7 @@ class StrategyState:
                         self.micro_loss_recovery_pct = 0.0
                 self._adjust_micro_tp_markup(
                     pnl, hold_bars=hold_bars, reason=reason, cost=cost_share
-                )   
+                )
                 log_events.append({
                     "ts": ts,
                     "event": f"MICRO_{reason}",
@@ -1112,6 +1220,7 @@ class StrategyState:
                     "pnl": pnl,
                     "cost": cost_share,
                 })
+                self._mark_activity(ts, log_events, reason=f"MICRO_{reason}")
             else:
                 remaining_positions.append(pos)
         self.micro_positions = remaining_positions
@@ -1165,6 +1274,7 @@ class StrategyState:
         self._update_session_range(h, l)
         self._update_anchor_window(h, l, c)
         self._update_micro_window(c)
+        self._maybe_apply_stuck_recovery(ts, c, log_events)
 
         # --- scalp take-profit first (protect fast exits) ---
         self._check_scalp_take_profit(ts, h, log_events)
@@ -1303,6 +1413,7 @@ class StrategyState:
                     if prev_qty <= 0 < self.Q:
                         self.round_start_ts = ts
                     log_events.append({"ts": ts, "event":"BUY", "price": trig, "q": q, "amt_q": amt_q, "ladder_idx": self.ladder_next_idx+1})
+                    self._mark_activity(ts, log_events, reason="LADDER_BUY")
                 self.ladder_next_idx += 1
                 continue
             break
@@ -1354,6 +1465,7 @@ class StrategyState:
                     self.C = max(self.C - core["cost"], 0.0)
                     if self.Q <= 0:
                         self.round_active = False
+                    self._mark_activity(ts, log_events, reason="TRAIL_EXIT")
                     self._reset_btd_progress()
                     return {"sell_price": F, "pnl": pnl, "reason":"TRAIL_PULLBACK", "qty": qty, "cost": core["cost"], "proceeds": proceeds}
 
@@ -1373,6 +1485,7 @@ class StrategyState:
                         self.C = max(self.C - core["cost"], 0.0)
                         if self.Q <= 0:
                             self.round_active = False
+                        self._mark_activity(ts, log_events, reason="IDLE_EXIT")
                         self._reset_btd_progress()
                         return {"sell_price": target, "pnl": pnl, "reason":"IDLE_EXIT", "qty": qty, "cost": core["cost"], "proceeds": proceeds}
                 self.idle_checked = True
@@ -1391,6 +1504,7 @@ class StrategyState:
                     self.C = max(self.C - core["cost"], 0.0)
                     if self.Q <= 0:
                         self.round_active = False
+                    self._mark_activity(ts, log_events, reason="TOTAL_CAP")
                     self._reset_btd_progress()
                     return {"sell_price": target, "pnl": pnl, "reason":"TOTAL_CAP", "qty": qty, "cost": core["cost"], "proceeds": proceeds}
         return None
