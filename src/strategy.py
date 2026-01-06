@@ -183,9 +183,9 @@ class StrategyState:
     btd: BuyTheDipConf
     sah: SellAtHeightConf
     micro: MicroOscillationConf
-    stuck: StuckRecoveryConf = field(default_factory=StuckRecoveryConf)
     snapshot_every_bars: int
     use_maker: bool
+    stuck: StuckRecoveryConf = field(default_factory=StuckRecoveryConf)
 
     # Core round state
     round_active: bool = True
