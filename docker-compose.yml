@@ -42,6 +42,7 @@ services:
     restart: "no"
 
   live:
+    build: .
     image: binance-breakpoint:latest
     container_name: binance-breakpoint-live
     env_file:

@@ -125,6 +125,13 @@ def state_to_payload(state: StrategyState) -> Dict[str, Any]:
         "micro_loss_recovery_pct": state.micro_loss_recovery_pct,
         "micro_reentry_scale": getattr(state, "micro_reentry_scale", 1.0),
         "micro_tp_markup_pct": getattr(state, "micro_tp_markup_pct", 0.0),
+        "stuck_stage": getattr(state, "stuck_stage", 0),
+        "stuck_last_stage_bar": getattr(state, "stuck_last_stage_bar", 0),
+        "last_activity_bar": getattr(state, "last_activity_bar", 0),
+        "stuck_allow_micro_inventory": getattr(state, "stuck_allow_micro_inventory", False),
+        "stuck_base_d_buy": getattr(state, "stuck_base_d_buy", None),
+        "stuck_base_micro_entry_pct": getattr(state, "stuck_base_micro_entry_pct", None),
+        "stuck_base_micro_band_pct": getattr(state, "stuck_base_micro_band_pct", None),
     }
 
 
@@ -179,6 +186,13 @@ def apply_payload_to_state(state: StrategyState, payload: Dict[str, Any]) -> Non
     state.micro_loss_recovery_pct = float(payload.get("micro_loss_recovery_pct", state.micro_loss_recovery_pct))
     state.micro_reentry_scale = float(payload.get("micro_reentry_scale", getattr(state, "micro_reentry_scale", 1.0)))
     state.micro_tp_markup_pct = float(payload.get("micro_tp_markup_pct", getattr(state, "micro_tp_markup_pct", 0.0)))
+    state.stuck_stage = int(payload.get("stuck_stage", getattr(state, "stuck_stage", 0)))
+    state.stuck_last_stage_bar = int(payload.get("stuck_last_stage_bar", getattr(state, "stuck_last_stage_bar", 0)))
+    state.last_activity_bar = int(payload.get("last_activity_bar", getattr(state, "last_activity_bar", 0)))
+    state.stuck_allow_micro_inventory = bool(payload.get("stuck_allow_micro_inventory", getattr(state, "stuck_allow_micro_inventory", False)))
+    state.stuck_base_d_buy = payload.get("stuck_base_d_buy", getattr(state, "stuck_base_d_buy", None))
+    state.stuck_base_micro_entry_pct = payload.get("stuck_base_micro_entry_pct", getattr(state, "stuck_base_micro_entry_pct", None))
+    state.stuck_base_micro_band_pct = payload.get("stuck_base_micro_band_pct", getattr(state, "stuck_base_micro_band_pct", None))
 
 
 def load_savepoint(directory: Path, symbol: str) -> Optional[Dict[str, Any]]:

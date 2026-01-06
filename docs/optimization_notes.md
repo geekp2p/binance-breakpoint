@@ -11,6 +11,63 @@ These suggestions are derived from the current production-style config snapshot 
 
 ## Recommended adjustments
 
+### Quick playbook when a pair gets stuck (ladder idle, micro skipping)
+If a specific symbol (e.g., **DCRUSDT**) stops firing new ladder orders and the
+activity log shows repeated `MICRO_BUY_SKIPPED OPEN_INVENTORY` entries for hours
+while other pairs behave normally:
+
+1. **Force a ladder refresh without changing global config**
+   - In the UI, hit **"Refresh" → "Resume all"** to re-run health checks and
+     trigger an immediate ladder rebuild for that pair.
+   - If the pair remains in `ACCUMULATE` with ammo left but no pending orders,
+     toggle **Pause → Resume** for just that symbol to reset its internal
+     timers.
+
+2. **Clear stale micro cooldowns**
+   - Micro is suppressed while core inventory is open. If you want micro to
+     resume before the ladder scales out, temporarily disable and re-enable the
+     micro module for that symbol in the UI; this resets the
+     `micro_cooldown_until_bar` gate and rechecks entry bands on the next bar.
+
+3. **Check anchor shifts**
+   - Frequent `LADDER_REBUILT ANCHOR_SHIFT` with no new orders usually means the
+     anchor keeps drifting upward with price. Hit **"Simulate" → "Stop" →
+     "Live"** to pin a fresh anchor from the latest close, then watch whether
+     the next buy level moves into reach.
+
+4. **Escalate only for the affected pair**
+   - Apply the overrides in the next section to DCRUSDT only (do not change
+     the base config). Start with the micro band tweaks and wider `d_buy`; keep
+     the successful settings for pairs like ZECUSDT untouched.
+
+> These steps are reversible and keep your global config intact. If the pair
+> still idles after a full refresh, consider widening `d_buy` and loosening the
+> micro bands for that symbol using the override snippet below.
+
+**Automation helper**
+- Generate and (optionally) write the staged overrides with:
+  ```bash
+  python -m src.stuck_pair_override DCRUSDT --stage baseline
+  python -m src.stuck_pair_override DCRUSDT --stage follow-up --config config.yaml --write
+  ```
+  The first command prints the 2–3 day nudge snippet; the second escalates to the 7–14 day follow-up and patches `config.yaml`
+  directly.
+- To automate the same nudges inside the core strategy without touching files, enable the built-in stuck recovery guardrail:
+  ```yaml
+  features:
+    stuck_recovery:
+      enabled: true
+      stage1_bars: 4320   # trigger after ~3 days of no trades
+      stage2_bars: 10080  # trigger after ~7 days
+  ```
+  When active, the strategy widens ladder spacing and relaxes micro bands in two stages, temporarily allowing micro entries even
+  with core inventory open. Any fill (ladder/micro/scalp) resets the overrides back to the baseline config.
+
+**Time-boxed override cycle**
+- If nothing fires for **2–3 days**, temporarily widen bands or `d_buy` for the stuck pair only, watch fills for another couple of days, then roll the override back to baseline.
+- If after **7–14 days** the pair is still idle, repeat with a slightly larger step (e.g., another +0.005 to `d_buy` or +0.02 to `entry_band_pct`) and again revert once activity resumes.
+- Keep successful pairs unchanged; only the idle symbol should get short-lived overrides.
+
 ### 1) Let micro-oscillation actually fire
 - Increase `max_band_pct` from **0.008 → 0.012** so the band covers more intra-bar noise.
 - Reduce `entry_band_pct` from **0.18 → 0.12** so the entry threshold is reachable more often.
