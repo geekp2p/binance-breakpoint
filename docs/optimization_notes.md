@@ -44,6 +44,11 @@ while other pairs behave normally:
 > still idles after a full refresh, consider widening `d_buy` and loosening the
 > micro bands for that symbol using the override snippet below.
 
+**Time-boxed override cycle**
+- If nothing fires for **2–3 days**, temporarily widen bands or `d_buy` for the stuck pair only, watch fills for another couple of days, then roll the override back to baseline.
+- If after **7–14 days** the pair is still idle, repeat with a slightly larger step (e.g., another +0.005 to `d_buy` or +0.02 to `entry_band_pct`) and again revert once activity resumes.
+- Keep successful pairs unchanged; only the idle symbol should get short-lived overrides.
+
 ### 1) Let micro-oscillation actually fire
 - Increase `max_band_pct` from **0.008 → 0.012** so the band covers more intra-bar noise.
 - Reduce `entry_band_pct` from **0.18 → 0.12** so the entry threshold is reachable more often.
