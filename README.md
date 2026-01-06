@@ -76,7 +76,8 @@ docker compose up backtest  # serves http://localhost:8181
       volumes:
         - ./savepoint:/app/savepoint   # บน Windows ใช้เส้นทางเดียวกันนี้ได้
   ```
-- ตรวจสอบว่าโฟลเดอร์ `savepoint` ถูกสร้างบนโฮสต์ก่อนรัน (หรือปล่อยให้ Docker สร้างให้) เพื่อให้สถานะไม่หายเวลา restart/สร้างคอนเทนเนอร์ใหม่
+  - ตรวจสอบว่าโฟลเดอร์ `savepoint` ถูกสร้างบนโฮสต์ก่อนรัน (หรือปล่อยให้ Docker สร้างให้) เพื่อให้สถานะไม่หายเวลา restart/สร้างคอนเทนเนอร์ใหม่
+  - รันด้วย Docker: ครั้งแรกแนะนำ `docker compose up --build live` เพื่อให้แน่ใจว่า image ถูก build; รอบถัด ๆ ไปใช้แค่ `docker compose up live` ได้เลย
 
 - ต้องการทดสอบว่าไฟล์บันทึกถูกสร้างจริงหรือไม่ (dry-run ก็ได้):
   ```bash

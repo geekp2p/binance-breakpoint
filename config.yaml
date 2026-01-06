@@ -130,6 +130,19 @@ pairs:
         min_displacement_atr: 0.5
         min_displacement_pct: 0.005
         cooldown_bars: 20
+      stuck_recovery:
+        # ปิดไว้เป็นค่าเริ่มต้น ถ้าคู่ไหนนิ่งหลายวันค่อยเปิดเป็น true
+        enabled: false
+        stage1_bars: 4320    # ~3 วันบนกรอบเวลา 1m
+        stage2_bars: 10080   # ~7 วันบนกรอบเวลา 1m
+        stage1_d_buy: 0.02
+        stage2_d_buy: 0.025
+        stage1_entry_band_pct: 0.12
+        stage2_entry_band_pct: 0.14
+        stage1_max_band_pct: 0.012
+        stage2_max_band_pct: 0.014
+        allow_micro_with_inventory: true
+        reset_micro_cooldown: true
     plotting: { enable: true }
 
   - symbol: DCRUSDT
@@ -258,6 +271,19 @@ pairs:
         min_displacement_atr: 0.5
         min_displacement_pct: 0.005
         cooldown_bars: 20
+      stuck_recovery:
+        # เปิด guardrail อัตโนมัติสำหรับ DCRUSDT (แก้อาการ ladder/micro ค้างนาน)
+        enabled: true
+        stage1_bars: 4320    # ~3 วันบนกรอบเวลา 1m
+        stage2_bars: 10080   # ~7 วันบนกรอบเวลา 1m
+        stage1_d_buy: 0.022
+        stage2_d_buy: 0.028
+        stage1_entry_band_pct: 0.13
+        stage2_entry_band_pct: 0.15
+        stage1_max_band_pct: 0.012
+        stage2_max_band_pct: 0.015
+        allow_micro_with_inventory: true
+        reset_micro_cooldown: true
     plotting: { enable: true }
 
   - symbol: DGBUSDT
