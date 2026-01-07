@@ -60,9 +60,9 @@ pairs:
         base_drop_pct: 0.03
         min_drop_pct: 0.015
         max_drop_pct: 0.06
-        base_take_profit_pct: 0.015
-        min_take_profit_pct: 0.012
-        max_take_profit_pct: 0.03
+        base_take_profit_pct: 0.018
+        min_take_profit_pct: 0.014
+        max_take_profit_pct: 0.035
         volatility_ref_pct: 0.04
         scale_strength: 0.6
         order_pct_allocation: 0.33
@@ -74,12 +74,12 @@ pairs:
         min_swings: 5
         min_swing_pct: 0.0012
         entry_band_pct: 0.18
-        take_profit_pct: 0.005
+        take_profit_pct: 0.0065
         stop_break_pct: 0.0035
         # Minimum margin above break-even (after fees) for micro exits
-        min_profit_pct: 0.004
+        min_profit_pct: 0.0055
         volatility_stop_mult: 1.0
-        volatility_take_profit_mult: 0.7
+        volatility_take_profit_mult: 0.8
         volatility_reentry_mult: 0.9
         order_pct_allocation: 0.12
         cooldown_bars: 8
@@ -201,9 +201,9 @@ pairs:
         base_drop_pct: 0.03
         min_drop_pct: 0.015
         max_drop_pct: 0.06
-        base_take_profit_pct: 0.015
-        min_take_profit_pct: 0.012
-        max_take_profit_pct: 0.03
+        base_take_profit_pct: 0.018
+        min_take_profit_pct: 0.014
+        max_take_profit_pct: 0.035
         volatility_ref_pct: 0.04
         scale_strength: 0.6
         order_pct_allocation: 0.33
@@ -215,12 +215,12 @@ pairs:
         min_swings: 5
         min_swing_pct: 0.0012
         entry_band_pct: 0.18
-        take_profit_pct: 0.005
+        take_profit_pct: 0.0065
         stop_break_pct: 0.0035
         # Minimum margin above break-even (after fees) for micro exits
-        min_profit_pct: 0.004
+        min_profit_pct: 0.0055
         volatility_stop_mult: 1.0
-        volatility_take_profit_mult: 0.7
+        volatility_take_profit_mult: 0.8
         volatility_reentry_mult: 0.9
         order_pct_allocation: 0.12
         cooldown_bars: 8
@@ -342,9 +342,9 @@ pairs:
         base_drop_pct: 0.03
         min_drop_pct: 0.015
         max_drop_pct: 0.06
-        base_take_profit_pct: 0.015
-        min_take_profit_pct: 0.012
-        max_take_profit_pct: 0.03
+        base_take_profit_pct: 0.018
+        min_take_profit_pct: 0.014
+        max_take_profit_pct: 0.035
         volatility_ref_pct: 0.04
         scale_strength: 0.6
         order_pct_allocation: 0.33
@@ -356,12 +356,12 @@ pairs:
         min_swings: 5
         min_swing_pct: 0.0012
         entry_band_pct: 0.18
-        take_profit_pct: 0.005
+        take_profit_pct: 0.0065
         stop_break_pct: 0.0035
         # Minimum margin above break-even (after fees) for micro exits
-        min_profit_pct: 0.004
+        min_profit_pct: 0.0055
         volatility_stop_mult: 1.0
-        volatility_take_profit_mult: 0.7
+        volatility_take_profit_mult: 0.8
         volatility_reentry_mult: 0.9
         order_pct_allocation: 0.12
         cooldown_bars: 8
@@ -470,9 +470,9 @@ pairs:
         base_drop_pct: 0.03
         min_drop_pct: 0.015
         max_drop_pct: 0.06
-        base_take_profit_pct: 0.015
-        min_take_profit_pct: 0.012
-        max_take_profit_pct: 0.03
+        base_take_profit_pct: 0.018
+        min_take_profit_pct: 0.014
+        max_take_profit_pct: 0.035
         volatility_ref_pct: 0.04
         scale_strength: 0.6
         order_pct_allocation: 0.33
@@ -484,12 +484,12 @@ pairs:
         min_swings: 5
         min_swing_pct: 0.0012
         entry_band_pct: 0.18
-        take_profit_pct: 0.005
+        take_profit_pct: 0.0065
         stop_break_pct: 0.0035
         # Minimum margin above break-even (after fees) for micro exits
-        min_profit_pct: 0.004
+        min_profit_pct: 0.0055
         volatility_stop_mult: 1.0
-        volatility_take_profit_mult: 0.7
+        volatility_take_profit_mult: 0.8
         volatility_reentry_mult: 0.9
         order_pct_allocation: 0.12
         cooldown_bars: 8
@@ -598,9 +598,9 @@ pairs:
         base_drop_pct: 0.03
         min_drop_pct: 0.015
         max_drop_pct: 0.06
-        base_take_profit_pct: 0.015
-        min_take_profit_pct: 0.012
-        max_take_profit_pct: 0.03
+        base_take_profit_pct: 0.018
+        min_take_profit_pct: 0.014
+        max_take_profit_pct: 0.035
         volatility_ref_pct: 0.04
         scale_strength: 0.6
         order_pct_allocation: 0.33
@@ -612,12 +612,12 @@ pairs:
         min_swings: 5
         min_swing_pct: 0.0012
         entry_band_pct: 0.18
-        take_profit_pct: 0.005
+        take_profit_pct: 0.0065
         stop_break_pct: 0.0035
         # Minimum margin above break-even (after fees) for micro exits
-        min_profit_pct: 0.004
+        min_profit_pct: 0.0055
         volatility_stop_mult: 1.0
-        volatility_take_profit_mult: 0.7
+        volatility_take_profit_mult: 0.8
         volatility_reentry_mult: 0.9
         order_pct_allocation: 0.12
         cooldown_bars: 8
@@ -726,9 +726,9 @@ pairs:
         base_drop_pct: 0.03
         min_drop_pct: 0.015
         max_drop_pct: 0.06
-        base_take_profit_pct: 0.015
-        min_take_profit_pct: 0.012
-        max_take_profit_pct: 0.03
+        base_take_profit_pct: 0.018
+        min_take_profit_pct: 0.014
+        max_take_profit_pct: 0.035
         volatility_ref_pct: 0.04
         scale_strength: 0.6
         order_pct_allocation: 0.33
@@ -740,12 +740,12 @@ pairs:
         min_swings: 5
         min_swing_pct: 0.0012
         entry_band_pct: 0.18
-        take_profit_pct: 0.005
+        take_profit_pct: 0.0065
         stop_break_pct: 0.0035
         # Minimum margin above break-even (after fees) for micro exits
-        min_profit_pct: 0.004
+        min_profit_pct: 0.0055
         volatility_stop_mult: 1.0
-        volatility_take_profit_mult: 0.7
+        volatility_take_profit_mult: 0.8
         volatility_reentry_mult: 0.9
         order_pct_allocation: 0.12
         cooldown_bars: 8
@@ -854,9 +854,9 @@ pairs:
         base_drop_pct: 0.03
         min_drop_pct: 0.015
         max_drop_pct: 0.06
-        base_take_profit_pct: 0.015
-        min_take_profit_pct: 0.012
-        max_take_profit_pct: 0.03
+        base_take_profit_pct: 0.018
+        min_take_profit_pct: 0.014
+        max_take_profit_pct: 0.035
         volatility_ref_pct: 0.04
         scale_strength: 0.6
         order_pct_allocation: 0.33
@@ -868,12 +868,12 @@ pairs:
         min_swings: 5
         min_swing_pct: 0.0012
         entry_band_pct: 0.18
-        take_profit_pct: 0.005
+        take_profit_pct: 0.0065
         stop_break_pct: 0.0035
         # Minimum margin above break-even (after fees) for micro exits
-        min_profit_pct: 0.004
+        min_profit_pct: 0.0055
         volatility_stop_mult: 1.0
-        volatility_take_profit_mult: 0.7
+        volatility_take_profit_mult: 0.8
         volatility_reentry_mult: 0.9
         order_pct_allocation: 0.12
         cooldown_bars: 8
@@ -982,9 +982,9 @@ pairs:
         base_drop_pct: 0.03
         min_drop_pct: 0.015
         max_drop_pct: 0.06
-        base_take_profit_pct: 0.015
-        min_take_profit_pct: 0.012
-        max_take_profit_pct: 0.03
+        base_take_profit_pct: 0.018
+        min_take_profit_pct: 0.014
+        max_take_profit_pct: 0.035
         volatility_ref_pct: 0.04
         scale_strength: 0.6
         order_pct_allocation: 0.33
@@ -996,12 +996,12 @@ pairs:
         min_swings: 5
         min_swing_pct: 0.0012
         entry_band_pct: 0.18
-        take_profit_pct: 0.005
+        take_profit_pct: 0.0065
         stop_break_pct: 0.0035
         # Minimum margin above break-even (after fees) for micro exits
-        min_profit_pct: 0.004
+        min_profit_pct: 0.0055
         volatility_stop_mult: 1.0
-        volatility_take_profit_mult: 0.7
+        volatility_take_profit_mult: 0.8
         volatility_reentry_mult: 0.9
         order_pct_allocation: 0.12
         cooldown_bars: 8
