@@ -966,14 +966,24 @@ def main() -> None:
                 return quote_amt, False
 
             if available_quote <= 0:
-                rollback_failed_buy(ev, ts, RuntimeError("Insufficient quote balance"))
+                rollback_failed_buy(
+                    ev,
+                    ts,
+                    RuntimeError("Insufficient quote balance"),
+                    rollback_ladder_idx=False,
+                )
                 record_history(ev)
                 return 0.0, True
 
             adjusted_quote = available_quote / (1 + state.fees_buy)
             expected_qty = float(ev.get("q") or ev.get("qty") or 0.0)
             if quote_amt <= 0 or expected_qty <= 0:
-                rollback_failed_buy(ev, ts, RuntimeError("Invalid buy sizing after clamping"))
+                rollback_failed_buy(
+                    ev,
+                    ts,
+                    RuntimeError("Invalid buy sizing after clamping"),
+                    rollback_ladder_idx=False,
+                )
                 record_history(ev)
                 return 0.0, True
 
@@ -1013,6 +1023,7 @@ def main() -> None:
             log_level: int = logging.ERROR,
             event_label: str = "BUY_FAILED",
             extra: Optional[Dict[str, object]] = None,
+            rollback_ladder_idx: bool = True,
         ) -> None:
             qty = float(ev.get("q") or ev.get("qty") or 0.0)
             quote_amt = float(ev.get("amt_q") or 0.0)
@@ -1020,7 +1031,7 @@ def main() -> None:
                 state.Q = max(state.Q - qty, 0.0)
             if quote_amt > 0:
                 state.C = max(state.C - quote_amt * (1 + state.fees_buy), 0.0)
-            if ev.get("event") == "BUY" and state.ladder_next_idx > 0:
+            if rollback_ladder_idx and ev.get("event") == "BUY" and state.ladder_next_idx > 0:
                 state.ladder_next_idx -= 1
             if ev.get("event") == "BTD_ORDER" and state.btd_orders_done > 0:
                 state.btd_orders_done -= 1
@@ -1967,6 +1978,7 @@ def main() -> None:
                                     "price_ref": est_price,
                                     "source_event": evt,
                                 },
+                                rollback_ladder_idx=False,
                             )
                             continue
                         if evt == "MICRO_BUY":
@@ -2029,7 +2041,12 @@ def main() -> None:
                                 continue
 
                             if quote_amt <= 0:
-                                rollback_failed_buy(ev, ts, RuntimeError("No purchasable quote after clamping"))
+                                rollback_failed_buy(
+                                    ev,
+                                    ts,
+                                    RuntimeError("No purchasable quote after clamping"),
+                                    rollback_ladder_idx=False,
+                                )
                                 record_history(ev)
                                 continue
 
