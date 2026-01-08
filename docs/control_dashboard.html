@@ -830,6 +830,19 @@
       const strategyFeeMeta = `Tot q ${fmtNumber(feeTotals.quote ?? 0, 4)} / bnb ${fmtNumber(feeTotals.bnb ?? 0, 4)}`;
       document.getElementById("strategyFeesMeta").textContent = strategyFeeLabel ? `${strategyFeeMeta} | ${strategyFeeLabel}` : strategyFeeMeta;
 
+      const lastSellBySymbol = new Map();
+      (Array.isArray(data.logs) ? data.logs : []).forEach((entry) => {
+        const symbol = (entry.symbol || "").toUpperCase();
+        if (!symbol) return;
+        const kind = String(entry.side || entry.kind || entry.event || entry.msg || "").toUpperCase();
+        if (!/SELL/.test(kind)) return;
+        const ts = entry.ts || entry.timestamp || entry.time;
+        const prev = lastSellBySymbol.get(symbol);
+        if (!prev || (ts && new Date(ts).getTime() > new Date(prev).getTime())) {
+          lastSellBySymbol.set(symbol, ts);
+        }
+      });
+
       rowsEl.innerHTML = filteredEntries
         .map(([symbol, v]) => {
           const statusClass = v.paused ? "paused" : "live";
@@ -862,6 +875,11 @@
       const exitLabel = (v.unrealized_pnl || 0) >= 0 ? "Take profit" : "Cut loss";
       const exitClass = (v.unrealized_pnl || 0) >= 0 ? "" : "btn-danger";
       const hasPosition = (v.qty || 0) > 0;
+      const takeProfitHint = hasPosition
+        ? ((v.unrealized_pnl || 0) >= 0 ? "Take profit ready" : "Hold for recovery")
+        : "No position";
+      const lastSellTs = lastSellBySymbol.get(symbol);
+      const lastSellLabel = lastSellTs ? `Last sell ${formatTime(lastSellTs)}` : "Last sell -";
       const exitDisabled = hasPosition ? "" : "disabled";
       const exitTitle = hasPosition
         ? "Sell now at market (includes ~0.1% fee)"
@@ -900,7 +918,11 @@
               <td><div class="muted">Buy: ${nextBuy}</div><div class="muted">BTD: ${buyTheDip}</div><div class="muted">Sell: ${nextSell}</div></td>
               <td>${microCell}</td>
               <td>${ladder}<div class="muted">Next q: ${ladderNextQuote}</div>${ladderBadgesHtml}</td>
-              <td><span class="status ${statusClass}">${statusText}</span></td>
+              <td>
+                <span class="status ${statusClass}">${statusText}</span>
+                <div class="muted">${takeProfitHint}</div>
+                <div class="muted">${lastSellLabel}</div>
+              </td>
               <td><button class="${exitClass}" data-action="exit" data-symbol="${symbol}" aria-label="${exitLabel}" title="${exitTitle}" ${exitDisabled}>${exitLabel}</button></td>
               <td><button class="${actionClass}" data-action="toggle" data-symbol="${symbol}" data-paused="${v.paused}">${actionLabel}</button></td>
             </tr>`;
