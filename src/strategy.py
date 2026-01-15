@@ -1099,41 +1099,22 @@ class StrategyState:
                     hold_bars = max(self.bar_index - int(pos["entry_bar"]), 0)                
                 breakeven_price = pos["cost"] / (qty * max(1 - self.fees_sell, 1e-9))
                 if exit_price < breakeven_price:
-                    exit_price = breakeven_price                
-                qty_to_sell = min(qty, self.Q)
+                    exit_price = breakeven_price
+                # Let live_trader clamp to available balance; strategy tracks micro positions independently
+                qty_to_sell = qty
                 tiny_qty_threshold = max(self.micro.min_exit_qty, 0.0)
                 if qty_to_sell <= tiny_qty_threshold:
-
-                    if self.Q <= tiny_qty_threshold:
-                        # No meaningful inventory left to exit → prune stale micro position
-                        log_events.append(
-                            {
-                                "ts": ts,
-                                "event": "MICRO_EXIT_PRUNED",
-                                "reason": "TINY_QTY",
-                                "qty": qty_to_sell,
-                                "price": exit_price,
-                            }
-                        )
-                        self.micro_last_exit_price = exit_price
-                        self.micro_cooldown_until_bar = self.bar_index + max(1, int(self.micro.cooldown_bars))
-                        self._adjust_micro_tp_markup(0.0, hold_bars=hold_bars, reason=reason)
-                        continue
-
-                    # There is still some inventory, but it's too small to exit: keep tracking
-                    pos["skip_until_bar"] = self.bar_index + max(1, int(self.micro.cooldown_bars))
-                    remaining_positions.append(pos)
-
+                    # Position too small to exit → prune stale micro position
                     log_events.append(
                         {
                             "ts": ts,
-                            "event": "MICRO_EXIT_SKIPPED",
+                            "event": "MICRO_EXIT_PRUNED",
                             "reason": "TINY_QTY",
                             "qty": qty_to_sell,
                             "price": exit_price,
                         }
                     )
-                    # self.micro_last_exit_price = exit_price
+                    self.micro_last_exit_price = exit_price
                     self.micro_cooldown_until_bar = self.bar_index + max(1, int(self.micro.cooldown_bars))
                     self._adjust_micro_tp_markup(0.0, hold_bars=hold_bars, reason=reason)
                     continue
@@ -1141,52 +1122,28 @@ class StrategyState:
                 notional = qty_to_sell * exit_price
                 min_notional = max(self.micro.min_exit_notional, 0.0)
                 if notional <= min_notional:
-
-                    if self.Q * exit_price <= min_notional:
-                        log_events.append(
-                            {
-                                "ts": ts,
-                                "event": "MICRO_EXIT_PRUNED",
-                                "reason": "TINY_REMAINDER",
-                                "qty": qty_to_sell,
-                                "price": exit_price,
-                            }
-                        )
-                        self.micro_last_exit_price = exit_price
-                        self.micro_cooldown_until_bar = self.bar_index + max(1, int(self.micro.cooldown_bars))
-                        self._adjust_micro_tp_markup(0.0, hold_bars=hold_bars, reason=reason)
-                        continue
-
-                    pos["skip_until_bar"] = self.bar_index + max(1, int(self.micro.cooldown_bars))
-                    remaining_positions.append(pos)
-
+                    # Position notional too small to exit → prune stale micro position
                     log_events.append(
                         {
                             "ts": ts,
-                            "event": "MICRO_EXIT_SKIPPED",
+                            "event": "MICRO_EXIT_PRUNED",
                             "reason": "TINY_REMAINDER",
                             "qty": qty_to_sell,
                             "price": exit_price,
                         }
                     )
-                    # self.micro_last_exit_price = exit_price
+                    self.micro_last_exit_price = exit_price
                     self.micro_cooldown_until_bar = self.bar_index + max(1, int(self.micro.cooldown_bars))
                     self._adjust_micro_tp_markup(0.0, hold_bars=hold_bars, reason=reason)
                     continue
 
-                cost_share = pos["cost"] * (qty_to_sell / qty)
+                # Sell the full micro position; live_trader will clamp to available balance
+                cost_share = pos["cost"]
                 proceeds = qty_to_sell * exit_price * (1 - self.fees_sell)
                 pnl = proceeds - cost_share
                 self.Q = max(self.Q - qty_to_sell, 0.0)
                 self.C = max(self.C - cost_share, 0.0)
-                if qty_to_sell < qty:
-                    remaining_positions.append(
-                        {
-                            **pos,
-                            "qty": qty - qty_to_sell,
-                            "cost": pos["cost"] - cost_share,
-                        }
-                    )
+                # Micro position is fully closed; no remaining qty to track
                 self.micro_last_exit_price = exit_price
                 self._nudge_ladder_to_price(exit_price, ts, log_events, reason="MICRO_EXIT")
                 self.micro_cooldown_until_bar = self.bar_index + max(1, int(self.micro.cooldown_bars))
