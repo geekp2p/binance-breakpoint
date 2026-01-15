@@ -2004,13 +2004,16 @@ def main() -> None:
                                     ts=ts,
                                 )
                                 continue
-                        quote_amt = float(ev.get("amt_q", 0.0))
-                        logging.info(
-                            "%s fill at %.4f for quote %.2f",
-                            evt,
-                            ev.get("price"),
-                            quote_amt,
-                        )
+                        # BTD events use "order_quote"/"order_price" before normalization
+                        quote_amt = float(ev.get("amt_q") or ev.get("order_quote", 0.0))
+                        price_hint = ev.get("price") or ev.get("order_price")
+                        if price_hint is not None:
+                            logging.info(
+                                "%s fill at %.4f for quote %.2f",
+                                evt,
+                                float(price_hint),
+                                quote_amt,
+                            )
                         if client and quote_amt > 0:
                             try:
                                 available_quote = client.get_free_balance(pair_cfg.quote)
