@@ -850,22 +850,46 @@ def main() -> None:
                 ev["last_price"] = price_for_validation
                 record_history(ev)
                 return
-            if client and price_for_validation > 0:
-                min_notional = client.get_min_notional(pair_cfg.symbol)
-                est_notional = sell_qty * price_for_validation
-                if min_notional is not None and est_notional < min_notional:
+
+            # Normalize quantity with round up to meet minimum requirements
+            if client:
+                normalized_qty, norm_reason = client.normalize_quantity(
+                    pair_cfg.symbol,
+                    sell_qty,
+                    price=price_for_validation,
+                    allow_round_up=True,
+                )
+
+                # If rounded quantity exceeds available balance, normalize available instead
+                if client and base_asset:
+                    try:
+                        available = client.get_free_balance(base_asset)
+                        if normalized_qty > available:
+                            logging.info(
+                                "Micro exit: rounded qty %.8f exceeds available %.8f; normalizing available",
+                                normalized_qty,
+                                available,
+                            )
+                            normalized_qty, norm_reason = client.normalize_quantity(
+                                pair_cfg.symbol,
+                                available,
+                                price=price_for_validation,
+                                allow_round_up=False,
+                            )
+                    except Exception as exc:  # pylint: disable=broad-except
+                        logging.warning("Unable to re-fetch %s balance: %s", base_asset, exc)
+
+                if normalized_qty <= 0:
                     logging.warning(
-                        "Skipping micro exit for %s: qty %.8f @ %.8f below min notional %.8f",
-                        pair_cfg.symbol,
+                        "Skipping micro exit: qty %.8f normalized to 0 (%s)",
                         sell_qty,
-                        price_for_validation,
-                        min_notional,
+                        norm_reason,
                     )
-                    ev["skip_reason"] = "BELOW_MIN_NOTIONAL"
-                    ev["estimated_notional"] = est_notional
-                    ev["min_notional"] = min_notional
+                    ev["skip_reason"] = norm_reason
                     record_history(ev)
                     return
+
+                sell_qty = normalized_qty
 
             executed_qty = sell_qty
             fill_price = target_price
@@ -1676,14 +1700,50 @@ def main() -> None:
             if client:
                 try:
                     available_qty = executed_qty
+                    available_balance = None
                     if base_asset:
                         try:
-                            available_qty = min(executed_qty, client.get_free_balance(base_asset))
+                            available_balance = client.get_free_balance(base_asset)
+                            available_qty = min(executed_qty, available_balance)
                         except Exception as exc:  # pylint: disable=broad-except
                             logging.warning("Unable to fetch %s balance before manual sell: %s", base_asset, exc)
                     if available_qty <= 0:
                         record_history({"ts": ts, "event": "MANUAL_EXIT_SKIPPED", "reason": "no_available_balance"})
                         return True
+
+                    # Normalize quantity with round up to meet minimum requirements
+                    market_price = kline.get("close") if kline else None
+                    normalized_qty, norm_reason = client.normalize_quantity(
+                        pair_cfg.symbol,
+                        available_qty,
+                        price=market_price,
+                        allow_round_up=True,
+                    )
+
+                    # If rounded quantity exceeds available balance, normalize available instead
+                    if available_balance is not None and normalized_qty > available_balance:
+                        logging.info(
+                            "Manual sell: rounded qty %.8f exceeds available %.8f; normalizing available",
+                            normalized_qty,
+                            available_balance,
+                        )
+                        normalized_qty, norm_reason = client.normalize_quantity(
+                            pair_cfg.symbol,
+                            available_balance,
+                            price=market_price,
+                            allow_round_up=False,
+                        )
+
+                    if normalized_qty <= 0:
+                        logging.warning(
+                            "Skipping manual sell: qty %.8f normalized to 0 (%s)",
+                            available_qty,
+                            norm_reason,
+                        )
+                        record_history({"ts": ts, "event": "MANUAL_EXIT_SKIPPED", "reason": norm_reason})
+                        return True
+
+                    available_qty = normalized_qty
 
                     sell_response = client.market_sell(pair_cfg.symbol, available_qty)
                     logging.info("Manual sell response: %s", json.dumps(sell_response))
@@ -1863,6 +1923,7 @@ def main() -> None:
                             continue
 
                         sell_qty = min(requested_qty, state.Q)
+                        available = None
                         if client and base_asset:
                             try:
                                 available = client.get_free_balance(base_asset)
@@ -1872,13 +1933,48 @@ def main() -> None:
                                         sell_qty,
                                         available,
                                     )
-                                    sell_qty = max(available, 0.0)
+                                    sell_qty = available
                             except Exception as exc:  # pylint: disable=broad-except
                                 logging.warning("Unable to fetch %s balance: %s", base_asset, exc)
 
                         if sell_qty <= 0:
                             record_history(ev)
                             continue
+
+                        # Normalize quantity with round up to meet minimum requirements
+                        if client:
+                            normalized_qty, norm_reason = client.normalize_quantity(
+                                pair_cfg.symbol,
+                                sell_qty,
+                                price=hinted_price,
+                                allow_round_up=True,
+                            )
+
+                            # If rounded quantity exceeds available balance, normalize available instead
+                            if available is not None and normalized_qty > available:
+                                logging.info(
+                                    "SAH: rounded qty %.8f exceeds available %.8f; normalizing available",
+                                    normalized_qty,
+                                    available,
+                                )
+                                normalized_qty, norm_reason = client.normalize_quantity(
+                                    pair_cfg.symbol,
+                                    available,
+                                    price=hinted_price,
+                                    allow_round_up=False,
+                                )
+
+                            if normalized_qty <= 0:
+                                logging.warning(
+                                    "Skipping SAH sell: qty %.8f normalized to 0 (%s)",
+                                    sell_qty,
+                                    norm_reason,
+                                )
+                                ev["skip_reason"] = norm_reason
+                                record_history(ev)
+                                continue
+
+                            sell_qty = normalized_qty
 
                         fills: list[dict] = []
                         executed_qty = sell_qty
@@ -2209,16 +2305,31 @@ def main() -> None:
                                 logging.warning("Unable to fetch %s balance: %s", base_asset, exc)
                         else:
                             logging.warning("base_asset not set, cannot verify available balance before sell")
-                        # Never round up for sell orders to avoid overselling
+
+                        # Try to normalize with round up first to meet minimum requirements
                         normalized_qty, norm_reason = client.normalize_quantity(
                             pair_cfg.symbol,
                             sell_qty,
                             price=kline.get("close"),
-                            allow_round_up=False,
+                            allow_round_up=True,
                         )
+
+                        # If rounded quantity exceeds available balance, use available balance instead
                         if available is not None and normalized_qty > available:
-                            norm_reason = "INSUFFICIENT_FOR_ROUND_UP"
-                            normalized_qty = 0.0
+                            logging.info(
+                                "Rounded qty %.8f exceeds available %.8f; normalizing available balance",
+                                normalized_qty,
+                                available,
+                            )
+                            # Try to normalize available balance with round down
+                            normalized_qty, norm_reason = client.normalize_quantity(
+                                pair_cfg.symbol,
+                                available,
+                                price=kline.get("close"),
+                                allow_round_up=False,
+                            )
+                            if normalized_qty <= 0:
+                                norm_reason = "AVAILABLE_BELOW_MINIMUM"
                         if normalized_qty <= 0:
                             logging.warning(
                                 "Skipping exit because qty %.8f is below exchange minimum (%s)",
