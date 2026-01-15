@@ -2197,6 +2197,7 @@ def main() -> None:
                         if base_asset:
                             try:
                                 available = client.get_free_balance(base_asset)
+                                logging.info("Available %s balance: %.8f (requested: %.8f)", base_asset, available, sell_qty)
                                 if available < sell_qty:
                                     logging.warning(
                                         "Requested sell qty %.6f exceeds available %.6f; clamping",
@@ -2206,11 +2207,14 @@ def main() -> None:
                                     sell_qty = available
                             except Exception as exc:
                                 logging.warning("Unable to fetch %s balance: %s", base_asset, exc)
+                        else:
+                            logging.warning("base_asset not set, cannot verify available balance before sell")
+                        # Never round up for sell orders to avoid overselling
                         normalized_qty, norm_reason = client.normalize_quantity(
                             pair_cfg.symbol,
                             sell_qty,
                             price=kline.get("close"),
-                            allow_round_up=True,
+                            allow_round_up=False,
                         )
                         if available is not None and normalized_qty > available:
                             norm_reason = "INSUFFICIENT_FOR_ROUND_UP"
@@ -2241,22 +2245,48 @@ def main() -> None:
                         chunk_size = sell_qty / chunk_count
                         sold_total = 0.0
                         all_fills = []
+                        sell_error = None
                         for idx in range(chunk_count):
                             qty_chunk = chunk_size if idx < chunk_count - 1 else sell_qty - sold_total
                             if qty_chunk <= 0:
                                 continue
-                            response = client.market_sell(pair_cfg.symbol, qty_chunk)
-                            all_fills.extend(response.get("fills") or [])
-                            sold_total += qty_chunk
-                            logging.info(
-                                "Sell response (%s/%s): %s",
-                                idx + 1,
-                                chunk_count,
-                                json.dumps(response),
-                            )
-                            log_order_summary("SELL", response)
-                            if sell_chunk_delay > 0 and idx < chunk_count - 1:
-                                time.sleep(sell_chunk_delay)
+                            # Apply LOT_SIZE rounding to each chunk before sending
+                            qty_chunk = client._apply_lot_step(pair_cfg.symbol, qty_chunk)
+                            if qty_chunk <= 0:
+                                logging.warning("Chunk qty %.8f rounded to 0, skipping", chunk_size)
+                                continue
+                            try:
+                                response = client.market_sell(pair_cfg.symbol, qty_chunk)
+                                all_fills.extend(response.get("fills") or [])
+                                sold_total += qty_chunk
+                                logging.info(
+                                    "Sell response (%s/%s): %s",
+                                    idx + 1,
+                                    chunk_count,
+                                    json.dumps(response),
+                                )
+                                log_order_summary("SELL", response)
+                                if sell_chunk_delay > 0 and idx < chunk_count - 1:
+                                    time.sleep(sell_chunk_delay)
+                            except Exception as exc:
+                                logging.error("Failed to sell chunk %s/%s (qty=%.6f): %s", idx + 1, chunk_count, qty_chunk, exc)
+                                sell_error = exc
+                                # If first chunk fails, abort entire exit
+                                if idx == 0:
+                                    break
+                                # If later chunks fail, continue to record what was sold
+
+                        # If sell completely failed, skip this exit and keep position
+                        if sell_error and sold_total <= 0:
+                            logging.error("Exit order failed completely, keeping position: %s", sell_error)
+                            record_history({
+                                "ts": ts,
+                                "event": "EXIT_FAILED",
+                                "reason": str(sell_error),
+                                "requested_qty": sell_qty,
+                            })
+                            pending_status_reason = "EXIT_FAILED"
+                            continue
                         sell_qty = sold_total
                         profit_allocator.record_fees_from_fills(pair_symbol, all_fills, pair_cfg.quote)
                         if all_fills and qty > 0 and sell_qty > 0:
