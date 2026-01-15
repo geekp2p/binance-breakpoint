@@ -213,6 +213,45 @@
       color: var(--success);
     }
 
+    .micro-positions { margin-top: 4px; }
+    .micro-positions summary {
+      list-style: none;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 8px;
+      border-radius: 8px;
+      border: 1px solid #334155;
+      background: rgba(244, 164, 96, 0.08);
+      color: var(--text);
+      font-weight: 600;
+      user-select: none;
+    }
+    .micro-positions summary::-webkit-details-marker { display: none; }
+    .micro-positions[open] summary { border-color: #fbbf24; background: rgba(244, 164, 96, 0.14); }
+    .micro-badges { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+    .micro-badge {
+      display: inline-block;
+      padding: 4px 6px;
+      border-radius: 8px;
+      background: rgba(244, 164, 96, 0.12);
+      border: 1px solid rgba(244, 164, 96, 0.25);
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: var(--text);
+    }
+    .micro-badge.profit {
+      background: rgba(76, 175, 80, 0.15);
+      border-color: rgba(76, 175, 80, 0.35);
+      color: var(--success);
+    }
+    .micro-badge.loss {
+      background: rgba(244, 67, 54, 0.15);
+      border-color: rgba(244, 67, 54, 0.35);
+      color: var(--danger);
+    }
+
     .timestamp {
       display: inline-block;
       margin-top: 2px;
@@ -418,8 +457,7 @@
               <th>Symbol</th>
               <th>Phase</th>
               <th>Price</th>
-              <th>Position (Qty)</th>
-              <th>Avg</th>
+              <th>Position Breakdown</th>
               <th>Unrealized</th>
               <th>Realized Total</th>
               <th>Cumulative PnL</th>
@@ -427,7 +465,7 @@
               <th>BNB reserve</th>
               <th>Fees</th>
               <th>Next (Buy/Sell)</th>
-              <th>Micro</th>
+              <th>Micro Positions</th>
               <th>Ladder</th>
               <th>Status</th>
               <th>Exit</th>
@@ -583,6 +621,47 @@
         <details class="ladder-steps">
           <summary>${summaryText}</summary>
           <div class="ladder-badges">${items.join("")}</div>
+        </details>`;
+    }
+
+    function microPositionBadges(positions, currentPrice) {
+      if (!Array.isArray(positions) || !positions.length) return "";
+      const summaryText = `View ${positions.length} micro position${positions.length > 1 ? 's' : ''}`;
+      const items = positions.map((pos, idx) => {
+        const qty = pos.qty ?? 0;
+        const entry = pos.entry ?? 0;
+        const target = pos.target ?? 0;
+        const stop = pos.stop ?? 0;
+        const cost = pos.cost ?? 0;
+
+        // Calculate unrealized PnL
+        const currentValue = qty * currentPrice * (1 - 0.001); // assume 0.1% sell fee
+        const unrealizedPnl = currentValue - cost;
+        const cls = unrealizedPnl >= 0 ? "micro-badge profit" : "micro-badge loss";
+
+        // Distance to target/stop
+        const toTarget = typeof target === "number" && currentPrice > 0
+          ? ((target - currentPrice) / currentPrice) * 100
+          : null;
+        const toStop = typeof stop === "number" && currentPrice > 0
+          ? ((stop - currentPrice) / currentPrice) * 100
+          : null;
+
+        const targetPct = toTarget !== null ? ` (${fmtPercent(toTarget)})` : "";
+        const stopPct = toStop !== null ? ` (${fmtPercent(toStop)})` : "";
+
+        const title = `Position #${idx + 1}: Qty ${fmtNumber(qty, 6)} @ ${fmtNumber(entry)} | Target ${fmtNumber(target)} | Stop ${fmtNumber(stop)} | Cost ${fmtNumber(cost, 2)} | Unrealized ${fmtNumber(unrealizedPnl, 2)}`;
+
+        return `<span class="${cls}" title="${title}">
+          #${idx + 1} ${fmtNumber(qty, 4)}@${fmtNumber(entry)}<br/>
+          <span style="font-size:0.7rem">T:${fmtNumber(target)}${targetPct} S:${fmtNumber(stop)}${stopPct}</span><br/>
+          <span style="font-size:0.7rem">PnL:${fmtNumber(unrealizedPnl, 2)}</span>
+        </span>`;
+      });
+      return `
+        <details class="micro-positions">
+          <summary>${summaryText}</summary>
+          <div class="micro-badges">${items.join("")}</div>
         </details>`;
     }
 // ทบทวน function feesLabel ว่าถูกไหม
@@ -901,27 +980,44 @@
       const bnbReserve = v.bnb_reserve || v.bnb_reserve_for_fees;
       const pairFees = v.fees_paid?.pair ?? v.fees_paid?.totals ?? v.fees_paid;
       const feeSplitPair = feesStrategyLabel({ by_strategy: v.fees_paid?.pair?.by_strategy || v.fees_paid?.by_strategy });
+      // Position breakdown by strategy
+      const ladderQty = (v.qty || 0) - (v.micro_position_qty || 0);
+      const microQty = v.micro_position_qty || 0;
+      const ladderAvg = v.avg_price || 0;
+      const microAvg = v.micro_position_cost && microQty > 0
+        ? v.micro_position_cost / microQty
+        : 0;
+
+      const positionBreakdownCell = `
+        <div><strong>Total:</strong> ${fmtNumber(v.qty || 0, 6)}</div>
+        <div class="muted">Ladder: ${fmtNumber(ladderQty, 6)}${ladderAvg > 0 ? ` @ ${fmtNumber(ladderAvg)}` : ""}</div>
+        <div class="muted">Micro: ${fmtNumber(microQty, 6)}${microAvg > 0 ? ` @ ${fmtNumber(microAvg)}` : ""}</div>
+        <div class="muted">Spent ${fmtNumber(v.quote_spent, 2)} quote</div>`;
+
+      // Micro positions detail
       const microStateRaw = v.micro_state || (v.micro_positions > 0 ? "waiting_sell" : "idle");
       const microState = microStateRaw.replace(/_/g, " ");
-      const microPos = fmtNumber(v.micro_position_qty, 6);
       const microSwings = v.micro_swings ?? 0;
       const microNextBuy = v.micro_next_buy_price ? fmtNumber(v.micro_next_buy_price) : "-";
       const microNextSell = v.micro_next_sell_price ? fmtNumber(v.micro_next_sell_price) : "-";
       const microCool = v.micro_cooldown_until_bar ?? "-";
+      const microPositionsArray = v.micro_positions_detail || [];
+      const microBadgesHtml = microPositionBadges(microPositionsArray, v.price);
+
       const microCell = `
         <div class="muted">${microState}</div>
-        <div class="muted">Pos ${microPos} / swings ${microSwings}</div>
-        <div class="muted">Next buy ${microNextBuy}</div>
-        <div class="muted">Next sell ${microNextSell}</div>
-        <div class="muted">CD bar ${microCool}</div>`;
+        <div class="muted">Swings: ${microSwings}</div>
+        <div class="muted">Next buy: ${microNextBuy}</div>
+        <div class="muted">Next sell: ${microNextSell}</div>
+        <div class="muted">CD bar: ${microCool}</div>
+        ${microBadgesHtml}`;
 
           return `
             <tr>
               <td><strong>${symbol}</strong><div class="muted timestamp">${v.timestamp ?? ""}</div></td>
               <td class="phase">${v.phase || "-"}</td>
               <td>${fmtNumber(v.price)}</td>
-              <td>${fmtNumber(v.qty, 6)}<div class="muted">Spent ${fmtNumber(v.quote_spent, 6)} quote</div></td>
-              <td>${v.avg_price ? fmtNumber(v.avg_price) : "-"}</td>
+              <td>${positionBreakdownCell}</td>
               <td class="${pnlClass(v.unrealized_pnl)}">${v.unrealized_pnl === null ? "-" : `${unrealizedCell}<div class=\"muted\">L ${fmtNumber(ladderUnrealizedPair, 2)} / M ${fmtNumber(microUnrealizedPair, 2)}</div>`}</td>
               <td class="${pnlClass(realizedPnl)}">${formatPnl(realizedPnl)}<div class="muted">L ${fmtNumber(ladderRealizedPair, 2)} / M ${fmtNumber(microRealizedPair, 2)}</div></td>
                <td class="${pnlClass(cumulativePnl)}">${formatPnl(cumulativePnl)}<div class="muted">L ${fmtNumber(ladderTotalPair, 2)} / M ${fmtNumber(microTotalPair, 2)}</div></td>
@@ -952,15 +1048,14 @@
         <td><strong>ALL</strong></td>
         <td class="phase">-</td>
         <td>-</td>
-        <td>${fmtNumber(totalQty, 6)}<div class="muted">Spent ${fmtNumber(quoteSpent, 6)} quote</div></td>
-        <td>-</td>
+        <td>${fmtNumber(totalQty, 6)}<div class="muted">Spent ${fmtNumber(quoteSpent, 2)} quote</div></td>
         <td class="${pnlClass(unrealized)}">${formatPnl(unrealized)}</td>
         <td class="${pnlClass(realized)}">${formatPnl(realized)}</td>
         <td class="${pnlClass(totalPnl)}">${formatPnl(totalPnl)}<div class="muted">${totalBreakdownText}</div></td>
         <td>${reserveLabel(totalReserves, { compact: true })}</td>
         <td>${reserveLabel(totalBnb, { compact: true })}</td>
         <td>${feesLabel(feeTotals)}${feeSplitText ? `<div class="muted">${feeSplitText}</div>` : ""}</td>
-        <td colspan="6" class="muted">Aggregated totals</td>
+        <td colspan="5" class="muted">Aggregated totals</td>
       `;
     }
 
