@@ -21,9 +21,12 @@ if %ERRORLEVEL% NEQ 0 (
   if %ERRORLEVEL% NEQ 0 exit /b %ERRORLEVEL%
 )
 
-git fetch %REMOTE% || goto error
-git reset --hard %REMOTE%/%BRANCH% || goto error
-git clean -fd || goto error
+git fetch %REMOTE%
+if %ERRORLEVEL% NEQ 0 goto error
+git reset --hard %REMOTE%/%BRANCH%
+if %ERRORLEVEL% NEQ 0 goto error
+git clean -fd
+if %ERRORLEVEL% NEQ 0 goto error
 
 echo Done: local tree now matches %REMOTE%/%BRANCH%.
 exit /b 0
