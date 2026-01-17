@@ -67,20 +67,43 @@ class BinanceClient:
     def _format_number(value: float, precision: int = 8) -> str:
         return f"{value:.{precision}f}".rstrip("0").rstrip(".") or "0"
 
-    def _lot_filters(self, symbol: str) -> Tuple[Optional[float], Optional[float]]:
+    def _lot_filters(self, symbol: str, filter_type: str = "LOT_SIZE") -> Tuple[Optional[float], Optional[float]]:
+        """Get lot size filters (minQty, stepSize) for a symbol.
+
+        Args:
+            symbol: Trading pair symbol
+            filter_type: Filter type to check - "LOT_SIZE" for limit orders, "MARKET_LOT_SIZE" for market orders
+        """
         info = self.get_symbol_info(symbol)
         for f in info.get("filters", []):
-            if f.get("filterType") == "LOT_SIZE":
+            if f.get("filterType") == filter_type:
                 try:
                     step = float(f["stepSize"])
                     min_qty = float(f["minQty"])
                     return min_qty, step
                 except (TypeError, ValueError, KeyError):
                     return None, None
+        # If MARKET_LOT_SIZE not found, fall back to LOT_SIZE
+        if filter_type == "MARKET_LOT_SIZE":
+            for f in info.get("filters", []):
+                if f.get("filterType") == "LOT_SIZE":
+                    try:
+                        step = float(f["stepSize"])
+                        min_qty = float(f["minQty"])
+                        return min_qty, step
+                    except (TypeError, ValueError, KeyError):
+                        return None, None
         return None, None
 
-    def _apply_lot_step(self, symbol: str, quantity: float) -> float:
-        min_qty, step = self._lot_filters(symbol)
+    def _apply_lot_step(self, symbol: str, quantity: float, filter_type: str = "LOT_SIZE") -> float:
+        """Apply lot size rounding to a quantity.
+
+        Args:
+            symbol: Trading pair symbol
+            quantity: Raw quantity to round
+            filter_type: Filter type - "LOT_SIZE" for limit orders, "MARKET_LOT_SIZE" for market orders
+        """
+        min_qty, step = self._lot_filters(symbol, filter_type)
         if step is None or step <= 0:
             return quantity
         qty_steps = math.floor(quantity / step)
@@ -147,7 +170,8 @@ class BinanceClient:
         return self._request("POST", "/api/v3/order", params=params, signed=True)
 
     def market_sell(self, symbol: str, quantity: float) -> Dict[str, Any]:
-        adj_qty = self._apply_lot_step(symbol, quantity)
+        # Use MARKET_LOT_SIZE filter for market orders
+        adj_qty = self._apply_lot_step(symbol, quantity, filter_type="MARKET_LOT_SIZE")
         if adj_qty <= 0:
             raise ValueError("Quantity below minimum lot size")
         params = {
