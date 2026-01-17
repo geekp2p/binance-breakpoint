@@ -2361,8 +2361,8 @@ def main() -> None:
                             qty_chunk = chunk_size if idx < chunk_count - 1 else sell_qty - sold_total
                             if qty_chunk <= 0:
                                 continue
-                            # Apply LOT_SIZE rounding to each chunk before sending
-                            qty_chunk = client._apply_lot_step(pair_cfg.symbol, qty_chunk)
+                            # Apply MARKET_LOT_SIZE rounding to each chunk before sending
+                            qty_chunk = client._apply_lot_step(pair_cfg.symbol, qty_chunk, filter_type="MARKET_LOT_SIZE")
                             if qty_chunk <= 0:
                                 logging.warning("Chunk qty %.8f rounded to 0, skipping", chunk_size)
                                 continue

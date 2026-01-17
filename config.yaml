@@ -154,7 +154,7 @@ pairs:
     fees: { taker: 0.001, maker: 0.001 }
 
     # บันไดสะสมหลัก (Martingale)
-    # - d_buy: ระยะห่างแต่ละขั้น (เริ่ม 3%)
+    # - d_buy: ระยะห่างแต่ละขั้น (เริ่ม 2%)
     # - m_buy: ตัวคูณขนาดไม้เมื่อถอยลง
     # - n_steps: จำนวนขั้นสูงสุดในรอบสะสมหลัก
     buy_ladder:
@@ -227,16 +227,17 @@ pairs:
         min_exit_qty: 0.0
       buy_the_dip:
         # เปิดซื้อดักหลุดบันได (dip) แยกจาก n_steps หลัก
+        # ลด order_pct_remaining จาก 0.5→0.2 และ max_orders จาก 7→5 เพื่อลดการซื้อหนักเกินไป
         enabled: true
         dip_threshold: 0.05
         rebound_min: 0.004
         rebound_max: 0.02
         cooldown_minutes: 10
-        max_orders: 7
+        max_orders: 5
         rebase_ladder_from_dip: true
         rebase_offset: 0.0
         order_quote: 0.0
-        order_pct_remaining: 0.5
+        order_pct_remaining: 0.2
         limit_offset: 0.001
         cancel_on_miss: true
         isolate_from_ladder: true
@@ -1059,7 +1060,8 @@ general:
   use_maker: true
   # จำกัดสลิปเพจก่อนยิงคำสั่ง EXIT (0 = ปิดการตรวจสอบ)
   max_exit_slippage_pct: 0.003
-  sell_scale_out: { chunks: 1, delay_seconds: 1, profit_only: true }
+  # เพิ่ม chunks และ delay เพื่อแบ่งคำสั่งขายใหญ่ๆ ออกเป็นชิ้นเล็ก และเว้นระยะเวลา
+  sell_scale_out: { chunks: 3, delay_seconds: 2, profit_only: true }
   binance:
     base_url: "https://api.binance.com"
     retry: { attempts: 4, backoff_sec: 0.5 }
