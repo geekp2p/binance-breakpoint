@@ -86,16 +86,17 @@ pairs:
         min_exit_qty: 0.0
       buy_the_dip:
         # เปิดซื้อดักหลุดบันได (dip) แยกจาก n_steps หลัก
+        # BTD เข้าเฉพาะตอนราคาดิ่งหนักมากๆ (70%) และใช้เงินเพียง 15% เท่านั้น
         enabled: true
-        dip_threshold: 0.05
+        dip_threshold: 0.70
         rebound_min: 0.004
         rebound_max: 0.02
         cooldown_minutes: 10
-        max_orders: 7
+        max_orders: 3
         rebase_ladder_from_dip: true
         rebase_offset: 0.0
         order_quote: 0.0
-        order_pct_remaining: 0.5
+        order_pct_remaining: 0.15
         limit_offset: 0.001
         cancel_on_miss: true
         isolate_from_ladder: true
@@ -369,16 +370,17 @@ pairs:
         min_exit_qty: 0.0
       buy_the_dip:
         # เปิดซื้อดักหลุดบันได (dip) แยกจาก n_steps หลัก
+        # BTD เข้าเฉพาะตอนราคาดิ่งหนักมากๆ (70%) และใช้เงินเพียง 15% เท่านั้น
         enabled: true
-        dip_threshold: 0.05
+        dip_threshold: 0.70
         rebound_min: 0.004
         rebound_max: 0.02
         cooldown_minutes: 10
-        max_orders: 7
+        max_orders: 3
         rebase_ladder_from_dip: true
         rebase_offset: 0.0
         order_quote: 0.0
-        order_pct_remaining: 0.5
+        order_pct_remaining: 0.15
         limit_offset: 0.001
         cancel_on_miss: true
         isolate_from_ladder: true
@@ -497,16 +499,17 @@ pairs:
         min_exit_qty: 0.0
       buy_the_dip:
         # เปิดซื้อดักหลุดบันได (dip) แยกจาก n_steps หลัก
+        # BTD เข้าเฉพาะตอนราคาดิ่งหนักมากๆ (70%) และใช้เงินเพียง 15% เท่านั้น
         enabled: true
-        dip_threshold: 0.05
+        dip_threshold: 0.70
         rebound_min: 0.004
         rebound_max: 0.02
         cooldown_minutes: 10
-        max_orders: 7
+        max_orders: 3
         rebase_ladder_from_dip: true
         rebase_offset: 0.0
         order_quote: 0.0
-        order_pct_remaining: 0.5
+        order_pct_remaining: 0.15
         limit_offset: 0.001
         cancel_on_miss: true
         isolate_from_ladder: true
@@ -625,16 +628,17 @@ pairs:
         min_exit_qty: 0.0
       buy_the_dip:
         # เปิดซื้อดักหลุดบันได (dip) แยกจาก n_steps หลัก
+        # BTD เข้าเฉพาะตอนราคาดิ่งหนักมากๆ (70%) และใช้เงินเพียง 15% เท่านั้น
         enabled: true
-        dip_threshold: 0.05
+        dip_threshold: 0.70
         rebound_min: 0.004
         rebound_max: 0.02
         cooldown_minutes: 10
-        max_orders: 7
+        max_orders: 3
         rebase_ladder_from_dip: true
         rebase_offset: 0.0
         order_quote: 0.0
-        order_pct_remaining: 0.5
+        order_pct_remaining: 0.15
         limit_offset: 0.001
         cancel_on_miss: true
         isolate_from_ladder: true
@@ -753,16 +757,17 @@ pairs:
         min_exit_qty: 0.0
       buy_the_dip:
         # เปิดซื้อดักหลุดบันได (dip) แยกจาก n_steps หลัก
+        # BTD เข้าเฉพาะตอนราคาดิ่งหนักมากๆ (70%) และใช้เงินเพียง 15% เท่านั้น
         enabled: true
-        dip_threshold: 0.05
+        dip_threshold: 0.70
         rebound_min: 0.004
         rebound_max: 0.02
         cooldown_minutes: 10
-        max_orders: 7
+        max_orders: 3
         rebase_ladder_from_dip: true
         rebase_offset: 0.0
         order_quote: 0.0
-        order_pct_remaining: 0.5
+        order_pct_remaining: 0.15
         limit_offset: 0.001
         cancel_on_miss: true
         isolate_from_ladder: true
@@ -881,16 +886,17 @@ pairs:
         min_exit_qty: 0.0
       buy_the_dip:
         # เปิดซื้อดักหลุดบันได (dip) แยกจาก n_steps หลัก
+        # BTD เข้าเฉพาะตอนราคาดิ่งหนักมากๆ (70%) และใช้เงินเพียง 15% เท่านั้น
         enabled: true
-        dip_threshold: 0.05
+        dip_threshold: 0.70
         rebound_min: 0.004
         rebound_max: 0.02
         cooldown_minutes: 10
-        max_orders: 7
+        max_orders: 3
         rebase_ladder_from_dip: true
         rebase_offset: 0.0
         order_quote: 0.0
-        order_pct_remaining: 0.5
+        order_pct_remaining: 0.15
         limit_offset: 0.001
         cancel_on_miss: true
         isolate_from_ladder: true
@@ -1009,16 +1015,17 @@ pairs:
         min_exit_qty: 0.0
       buy_the_dip:
         # เปิดซื้อดักหลุดบันได (dip) แยกจาก n_steps หลัก
+        # BTD เข้าเฉพาะตอนราคาดิ่งหนักมากๆ (70%) และใช้เงินเพียง 15% เท่านั้น
         enabled: true
-        dip_threshold: 0.05
+        dip_threshold: 0.70
         rebound_min: 0.004
         rebound_max: 0.02
         cooldown_minutes: 10
-        max_orders: 7
+        max_orders: 3
         rebase_ladder_from_dip: true
         rebase_offset: 0.0
         order_quote: 0.0
-        order_pct_remaining: 0.5
+        order_pct_remaining: 0.15
         limit_offset: 0.001
         cancel_on_miss: true
         isolate_from_ladder: true
